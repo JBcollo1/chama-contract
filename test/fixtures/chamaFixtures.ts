@@ -16,7 +16,8 @@ export const FINE_AMOUNT = parseEther("0.01");
 export async function deployFactoryFixture() {
   const [owner, user1, user2, user3, user4] = await hre.viem.getWalletClients();
 
-  const factory = await hre.viem.deployContract("ChamaFactory", []);
+  const factory = await hre.viem.deployContract("ChamaFactory", [owner.account.address]);
+
   const publicClient = await hre.viem.getPublicClient();
 
   return {
