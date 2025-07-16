@@ -13,7 +13,7 @@ describe("ChamaGroup - Punishment System", function () {
 
       const hash = await group.write.punishMember(
         [user2.account.address, 2, "Test punishment"], // Fine
-        { client: { wallet: user1 } }
+        {  account: user1.account } 
       );
       await publicClient.waitForTransactionReceipt({ hash });
 
@@ -35,7 +35,7 @@ describe("ChamaGroup - Punishment System", function () {
 
       const hash = await group.write.punishMember(
         [user2.account.address, 1, "Warning test"], // Warning
-        { client: { wallet: user1 } }
+        { account: user1.account }
       );
       await publicClient.waitForTransactionReceipt({ hash });
 
@@ -54,12 +54,12 @@ describe("ChamaGroup - Punishment System", function () {
       // Punish with fine
       const punishHash = await group.write.punishMember(
         [user2.account.address, 2, "Fine test"], // Fine
-        { client: { wallet: user1 } }
+        { account: user1.account }
       );
       await publicClient.waitForTransactionReceipt({hash: punishHash });
 
       // Pay fine
-      const payHash = await group.write.payFine([], {
+      const payHash = await group.write.payFine( {
         client: { wallet: user2 },
         value: FINE_AMOUNT
       });
@@ -80,7 +80,7 @@ describe("ChamaGroup - Punishment System", function () {
 
       const hash = await group.write.punishMember(
         [user2.account.address, 3, "Ban test"], // Ban
-        { client: { wallet: user1 } }
+        {  account: user1.account } 
       );
       await publicClient.waitForTransactionReceipt({ hash });
 
@@ -100,13 +100,13 @@ describe("ChamaGroup - Punishment System", function () {
       // Punish member
       const punishHash = await group.write.punishMember(
         [user2.account.address, 2, "Test punishment"], // Fine
-        { client: { wallet: user1 } }
+        {  account: user1.account } 
       );
       await publicClient.waitForTransactionReceipt({ hash:punishHash });
 
       // Cancel punishment
       const cancelHash = await group.write.cancelPunishment([user2.account.address], {
-        client: { wallet: user1 }
+        account: user1.account
       });
       await publicClient.waitForTransactionReceipt({ hash:cancelHash });
 

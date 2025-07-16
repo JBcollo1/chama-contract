@@ -14,6 +14,7 @@ type GroupRules = {
   approvalRequired: boolean;
   emergencyWithdrawAllowed: boolean;
 };
+
 describe("ChamaGroup - Deployment", function () {
   describe("Deployment", function () {
     it("Should deploy with correct initial state", async function () {
@@ -26,7 +27,20 @@ describe("ChamaGroup - Deployment", function () {
       expect(await group.read.isActive()).to.be.true;
       expect(await group.read.totalFunds()).to.equal(0n);
 
-      const rules = await group.read.rules() as GroupRules;
+      const rawRules = await group.read.rules();
+
+      const rules: GroupRules = {
+        name: rawRules[0],
+        contributionAmount: rawRules[1],
+        contributionFrequency: rawRules[2],
+        maxMembers: rawRules[3],
+        startDate: rawRules[4],
+        endDate: rawRules[5],
+        punishmentMode: rawRules[6],
+        approvalRequired: rawRules[7],
+        emergencyWithdrawAllowed: rawRules[8],
+      };
+
       expect(rules.name).to.equal(groupConfig.name);
       expect(rules.contributionAmount).to.equal(groupConfig.contributionAmount);
       expect(rules.maxMembers).to.equal(groupConfig.maxMembers);

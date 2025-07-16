@@ -18,7 +18,7 @@ describe("ChamaGroup - Member Management", function () {
       // Fast forward to start date
       await time.increaseTo(startDate);
 
-      const hash = await group.write.joinGroup([], { client: { wallet: user2 } });
+      const hash = await group.write.joinGroup( { account: user2.account  });
       await publicClient.waitForTransactionReceipt({ hash });
 
       expect(await group.read.memberCount()).to.equal(1n);
@@ -37,7 +37,7 @@ describe("ChamaGroup - Member Management", function () {
 
       await time.increaseTo(startDate);
 
-      const hash = await group.write.joinGroup([], { client: { wallet: user2 } });
+      const hash = await group.write.joinGroup( { account: user2.account  });
       await publicClient.waitForTransactionReceipt({ hash });
 
       const events = await group.getEvents.MemberJoined();
@@ -53,12 +53,12 @@ describe("ChamaGroup - Member Management", function () {
       await time.increaseTo(startDate);
 
       // First join
-      const hash = await group.write.joinGroup([], { client: { wallet: user2 } });
+      const hash = await group.write.joinGroup({ account: user2.account });
       await publicClient.waitForTransactionReceipt({ hash });
 
       // Second join attempt
       await expect(
-        group.write.joinGroup([], { client: { wallet: user2 } })
+        group.write.joinGroup({ account: user2.account  })
       ).to.be.rejectedWith("Already a member");
     });
 
@@ -84,7 +84,7 @@ describe("ChamaGroup - Member Management", function () {
       };
 
       const hash = await factory.write.createGroup([groupConfig], {
-        client: { wallet: user1 }
+        account: user1.account
       });
       await publicClient.waitForTransactionReceipt({ hash });
 
@@ -96,12 +96,12 @@ describe("ChamaGroup - Member Management", function () {
       await time.increaseTo(startDate);
 
       // Add 2 members
-      await group.write.joinGroup([], { client: { wallet: user2 } });
-      await group.write.joinGroup([], { client: { wallet: user3 } });
+      await group.write.joinGroup( { account: user2.account } );
+      await group.write.joinGroup( { account: user3.account } );
 
       // Third member should be rejected
       await expect(
-        group.write.joinGroup([], { client: { wallet: user4 } })
+        group.write.joinGroup({ account: user4.account  })
       ).to.be.rejectedWith("Group is full");
     });
 
@@ -127,7 +127,7 @@ describe("ChamaGroup - Member Management", function () {
       };
 
       const hash = await factory.write.createGroup([groupConfig], {
-        client: { wallet: user1 }
+         account : user1.account 
       });
       await publicClient.waitForTransactionReceipt({ hash });
 
@@ -139,7 +139,7 @@ describe("ChamaGroup - Member Management", function () {
       await time.increaseTo(startDate);
 
       // Submit join request
-      const joinHash = await group.write.joinGroup([], { client: { wallet: user2 } });
+      const joinHash = await group.write.joinGroup({ account: user2.account  });
       await publicClient.waitForTransactionReceipt({ hash : joinHash });
 
       // Should not be a member yet
@@ -147,7 +147,7 @@ describe("ChamaGroup - Member Management", function () {
 
       // Admin approves
       const approveHash = await group.write.approveJoinRequest([user2.account.address], {
-        client: { wallet: user1 }
+        account: user1.account
       });
       await publicClient.waitForTransactionReceipt({ hash: approveHash });
 

@@ -8,7 +8,7 @@ describe("ChamaGroup - Contributions", function () {
     it("Should allow members to contribute correct amount", async function () {
       const { group, user2, publicClient, groupConfig } = await loadFixture(setupGroupWithMembers);
 
-      const hash = await group.write.contribute([], {
+      const hash = await group.write.contribute( {
         account: user2.account,
         value: groupConfig.contributionAmount
       });
@@ -29,7 +29,7 @@ describe("ChamaGroup - Contributions", function () {
     it("Should emit ContributionMade event", async function () {
       const { group, user2, publicClient, groupConfig } = await loadFixture(setupGroupWithMembers);
 
-      const hash = await group.write.contribute([], {
+      const hash = await group.write.contribute( {
         account: user2.account,
         value: groupConfig.contributionAmount
       });
@@ -45,14 +45,14 @@ describe("ChamaGroup - Contributions", function () {
       const { group, user2, groupConfig } = await loadFixture(setupGroupWithMembers);
 
       await expect(
-        group.write.contribute([], {
+        group.write.contribute( {
           account: user2.account,
           value: groupConfig.contributionAmount - 1n
         })
       ).to.be.rejectedWith("Incorrect contribution amount");
 
       await expect(
-        group.write.contribute([], {
+        group.write.contribute( {
           account: user2.account,
           value: groupConfig.contributionAmount + 1n
         })
@@ -63,7 +63,7 @@ describe("ChamaGroup - Contributions", function () {
       const { group, user4, groupConfig } = await loadFixture(setupGroupWithMembers);
 
       await expect(
-        group.write.contribute([], {
+        group.write.contribute({
           account: user4.account,
           value: groupConfig.contributionAmount
         })
@@ -76,7 +76,7 @@ describe("ChamaGroup - Contributions", function () {
       const { group, user2, publicClient, groupConfig } = await loadFixture(setupGroupWithMembers);
 
       // First contribution
-      const hash1 = await group.write.contribute([], {
+      const hash1 = await group.write.contribute( {
         account: user2.account,
         value: groupConfig.contributionAmount
       });
@@ -84,7 +84,7 @@ describe("ChamaGroup - Contributions", function () {
 
       // Second contribution in same period
       await expect(
-        group.write.contribute([], {
+        group.write.contribute( {
           account: user2.account,
           value: groupConfig.contributionAmount
         })
@@ -95,7 +95,7 @@ describe("ChamaGroup - Contributions", function () {
       const { group, user2, publicClient, groupConfig } = await loadFixture(setupGroupWithMembers);
 
       // First contribution
-      const hash1 = await group.write.contribute([], {
+      const hash1 = await group.write.contribute( {
         account: user2.account,
         value: groupConfig.contributionAmount
       });
@@ -105,7 +105,7 @@ describe("ChamaGroup - Contributions", function () {
       await time.increase(ONE_WEEK_IN_SECS);
 
       // Second contribution in new period
-      const hash2 = await group.write.contribute([], {
+      const hash2 = await group.write.contribute( {
         account: user2.account,
         value: groupConfig.contributionAmount
       });
@@ -125,7 +125,7 @@ describe("ChamaGroup - Contributions", function () {
       const { group, user2, publicClient, groupConfig } = await loadFixture(setupGroupWithMembers);
 
       // Contribute in period 0
-      const hash1 = await group.write.contribute([], {
+      const hash1 = await group.write.contribute( {
         account: user2.account,
         value: groupConfig.contributionAmount
       });
@@ -141,7 +141,7 @@ describe("ChamaGroup - Contributions", function () {
       expect(await group.read.getMemberContributionStatus([user2.account.address, 1n])).to.be.false;
 
       // Contribute in period 1
-      const hash2 = await group.write.contribute([], {
+      const hash2 = await group.write.contribute( {
         account: user2.account,
         value: groupConfig.contributionAmount
       });
@@ -157,13 +157,13 @@ describe("ChamaGroup - Contributions", function () {
       const { group, user2, user3, publicClient, groupConfig } = await loadFixture(setupGroupWithMembers);
 
       // Both members contribute
-      const hash1 = await group.write.contribute([], {
+      const hash1 = await group.write.contribute( {
         account: user2.account,
         value: groupConfig.contributionAmount
       });
       await publicClient.waitForTransactionReceipt({ hash: hash1 });
 
-      const hash2 = await group.write.contribute([], {
+      const hash2 = await group.write.contribute( {
         account: user3.account,
         value: groupConfig.contributionAmount
       });
@@ -195,7 +195,7 @@ describe("ChamaGroup - Contributions", function () {
       const { group, user2, user3, publicClient, groupConfig } = await loadFixture(setupGroupWithMembers);
 
       // User2 contributes in period 0
-      const hash1 = await group.write.contribute([], {
+      const hash1 = await group.write.contribute( {
         account: user2.account,
         value: groupConfig.contributionAmount
       });
@@ -205,14 +205,14 @@ describe("ChamaGroup - Contributions", function () {
       await time.increase(ONE_WEEK_IN_SECS);
 
       // User3 contributes in period 1 (missed period 0)
-      const hash2 = await group.write.contribute([], {
+      const hash2 = await group.write.contribute( {
         account: user3.account,
         value: groupConfig.contributionAmount
       });
       await publicClient.waitForTransactionReceipt({ hash: hash2 });
 
       // User2 also contributes in period 1
-      const hash3 = await group.write.contribute([], {
+      const hash3 = await group.write.contribute( {
         account: user2.account,
         value: groupConfig.contributionAmount
       });
@@ -250,11 +250,11 @@ describe("ChamaGroup - Contributions", function () {
       const { group, user2, user3, publicClient, groupConfig } = await loadFixture(setupGroupWithMembers);
 
       // Period 0: Both members contribute
-      await group.write.contribute([], {
+      await group.write.contribute( {
         account: user2.account,
         value: groupConfig.contributionAmount
       });
-      await group.write.contribute([], {
+      await group.write.contribute( {
         account: user3.account,
         value: groupConfig.contributionAmount
       });
@@ -263,7 +263,7 @@ describe("ChamaGroup - Contributions", function () {
       await time.increase(ONE_WEEK_IN_SECS);
 
       // Period 1: Only user2 contributes
-      await group.write.contribute([], {
+      await group.write.contribute( {
         account: user2.account,
         value: groupConfig.contributionAmount
       });
@@ -272,7 +272,7 @@ describe("ChamaGroup - Contributions", function () {
       await time.increase(ONE_WEEK_IN_SECS);
 
       // Period 2: Only user3 contributes
-      await group.write.contribute([], {
+      await group.write.contribute( {
         account: user3.account,
         value: groupConfig.contributionAmount
       });
@@ -313,7 +313,7 @@ describe("ChamaGroup - Contributions", function () {
       const { group, user2, publicClient, groupConfig, startDate } = await loadFixture(setupGroupWithMembers);
 
       // Contribute exactly at start of period 0 (already at startDate from setupGroupWithMembers)
-      await group.write.contribute([], {
+      await group.write.contribute( {
         account: user2.account,
         value: groupConfig.contributionAmount
       });
@@ -322,7 +322,7 @@ describe("ChamaGroup - Contributions", function () {
       await time.increaseTo(startDate + BigInt(ONE_WEEK_IN_SECS));
 
       // Should be able to contribute in new period
-      await group.write.contribute([], {
+      await group.write.contribute( {
         account: user2.account,
         value: groupConfig.contributionAmount
       });
@@ -339,7 +339,7 @@ describe("ChamaGroup - Contributions", function () {
       await time.increaseTo(endDate + 1n);
 
       await expect(
-        group.write.contribute([], {
+        group.write.contribute( {
           account: user2.account,
           value: groupConfig.contributionAmount
         })

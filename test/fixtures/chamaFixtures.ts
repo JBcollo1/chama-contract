@@ -87,11 +87,11 @@ export async function setupGroupWithMembers() {
   await time.increaseTo(startDate);
 
   // Add members - pass empty array for function args, config as second parameter
-  await group.write.joinGroup([], {
+  await group.write.joinGroup( {
     account: user2.account
   });
 
-  await group.write.joinGroup([], {
+  await group.write.joinGroup( {
     account: user3.account
   });
 
@@ -103,11 +103,11 @@ export async function setupGroupWithContributions() {
   const { group, user2, user3, publicClient, groupConfig } = fixture;
 
   // Both members contribute in first period
-  await group.write.contribute([], {
+  await group.write.contribute( {
     account: user2.account,
     value: groupConfig.contributionAmount
   });
-  await group.write.contribute([], {
+  await group.write.contribute( {
     account: user3.account,
     value: groupConfig.contributionAmount
   });
