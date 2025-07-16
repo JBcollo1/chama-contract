@@ -12,9 +12,9 @@ import "./ChamaStructs.sol";
  * @dev Factory contract for deploying and managing ChamaGroup contracts
  */
 contract ChamaFactory is Ownable, Pausable {
-    using SafeMath for uint256;
+  
     using ChamaStructs for *;
-
+    constructor(address initialOwner) Ownable(initialOwner) {}
     // Events
     event GroupCreated(
         address indexed creator,
