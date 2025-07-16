@@ -163,7 +163,7 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
     /**
      * @dev Pay fine for punishment
      */
-    function payFine() external payable onlyActiveMember nonReentrant {
+    function payFine() external payable  nonReentrant {
         ChamaStructs.Punishment storage punishment = punishments[msg.sender];
         require(punishment.isActive, "No active punishment");
         require(punishment.action == ChamaStructs.PunishmentAction.Fine, "Not a fine punishment");

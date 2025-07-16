@@ -7,6 +7,7 @@ describe("ChamaGroup - Contributions", function () {
   describe("Basic Contributions", function () {
     it("Should allow members to contribute correct amount", async function () {
       const { group, user2, publicClient, groupConfig } = await loadFixture(setupGroupWithMembers);
+      
 
       const hash = await group.write.contribute( {
         account: user2.account,
@@ -28,7 +29,7 @@ describe("ChamaGroup - Contributions", function () {
 
     it("Should emit ContributionMade event", async function () {
       const { group, user2, publicClient, groupConfig } = await loadFixture(setupGroupWithMembers);
-
+     
       const hash = await group.write.contribute( {
         account: user2.account,
         value: groupConfig.contributionAmount
@@ -343,7 +344,7 @@ describe("ChamaGroup - Contributions", function () {
           account: user2.account,
           value: groupConfig.contributionAmount
         })
-      ).to.be.rejectedWith("Group ended");
+      ).to.be.rejectedWith("Group has ended");
     });
 
     it("Should handle zero members scenario", async function () {

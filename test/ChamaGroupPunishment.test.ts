@@ -52,15 +52,18 @@ describe("ChamaGroup - Punishment System", function () {
       const { group, user1, user2, publicClient } = await loadFixture(setupGroupWithContributions);
 
       // Punish with fine
+      
       const punishHash = await group.write.punishMember(
         [user2.account.address, 2, "Fine test"], // Fine
         { account: user1.account }
       );
       await publicClient.waitForTransactionReceipt({hash: punishHash });
+      const punishment2 = await group.read.getPunishmentDetails([user2.account.address]);
+      console.log("Punishment:", punishment2);
 
       // Pay fine
       const payHash = await group.write.payFine( {
-        client: { wallet: user2 },
+         account: user2 .account,
         value: FINE_AMOUNT
       });
       await publicClient.waitForTransactionReceipt({hash: payHash });

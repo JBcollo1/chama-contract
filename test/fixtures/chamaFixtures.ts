@@ -82,11 +82,12 @@ export async function deployGroupFixture() {
 
 export async function setupGroupWithMembers() {
   const fixture = await loadFixture(deployGroupFixture);
-  const { group, user2, user3, publicClient, startDate } = fixture;
+  const { group, user1,user2, user3, publicClient, startDate } = fixture;
 
   await time.increaseTo(startDate);
 
   // Add members - pass empty array for function args, config as second parameter
+  await group.write.joinGroup({ account: user1.account });
   await group.write.joinGroup( {
     account: user2.account
   });
@@ -95,14 +96,18 @@ export async function setupGroupWithMembers() {
     account: user3.account
   });
 
-  return { ...fixture, members: [user2, user3] };
+  return { ...fixture, members: [user1,user2, user3] };
 }
 
 export async function setupGroupWithContributions() {
   const fixture = await setupGroupWithMembers();
-  const { group, user2, user3, publicClient, groupConfig } = fixture;
+  const { group,user1, user2, user3, publicClient, groupConfig } = fixture;
 
   // Both members contribute in first period
+   await group.write.contribute( {
+    account: user1.account,
+    value: groupConfig.contributionAmount
+  });
   await group.write.contribute( {
     account: user2.account,
     value: groupConfig.contributionAmount
