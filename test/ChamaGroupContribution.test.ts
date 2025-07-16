@@ -17,7 +17,13 @@ describe("ChamaGroup - Contributions", function () {
       });
       await publicClient.waitForTransactionReceipt({ hash });
 
-      const member = await group.read.getMemberDetails([user2.account.address]);
+      const member = await group.read.getMemberDetails([user2.account.address]) as [
+        boolean,
+        boolean,
+        bigint,
+        bigint,
+        bigint
+        ];
       expect(member[3]).to.equal(groupConfig.contributionAmount); // totalContributed
 
       expect(await group.read.totalFunds()).to.equal(groupConfig.contributionAmount);
@@ -66,7 +72,7 @@ describe("ChamaGroup - Contributions", function () {
         client: { wallet: user2 },
         value: groupConfig.contributionAmount
       });
-      await publicClient.waitForTransactionReceipt({ hash1 });
+      await publicClient.waitForTransactionReceipt({ hash: hash1 });
 
       // Second contribution in same period
       await expect(
@@ -85,7 +91,7 @@ describe("ChamaGroup - Contributions", function () {
         client: { wallet: user2 },
         value: groupConfig.contributionAmount
       });
-      await publicClient.waitForTransactionReceipt({ hash1 });
+      await publicClient.waitForTransactionReceipt({ hash :hash1 });
 
       // Move to next period (1 week later)
       await time.increase(ONE_WEEK_IN_SECS);
@@ -95,9 +101,15 @@ describe("ChamaGroup - Contributions", function () {
         client: { wallet: user2 },
         value: groupConfig.contributionAmount
       });
-      await publicClient.waitForTransactionReceipt({ hash2 });
+      await publicClient.waitForTransactionReceipt({ hash: hash2 });
 
-      const member = await group.read.getMemberDetails([user2.account.address]);
+      const member = await group.read.getMemberDetails([user2.account.address]) as [
+        boolean,
+        boolean,
+        bigint,
+        bigint,
+        bigint
+        ];
       expect(member[3]).to.equal(groupConfig.contributionAmount * 2n); // totalContributed
     });
   });
