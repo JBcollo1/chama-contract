@@ -10,7 +10,7 @@ describe("ChamaGroup - Punishment System", function () {
   describe("Punishment System", function () {
     it("Should allow admins to manually punish members", async function () {
       const { group, user1, user2, publicClient } = await loadFixture(setupGroupWithContributions);
-
+      
       const hash = await group.write.punishMember(
         [user2.account.address, 2, "Test punishment"], // Fine
         {  account: user1.account } 

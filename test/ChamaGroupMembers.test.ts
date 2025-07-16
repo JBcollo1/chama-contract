@@ -74,7 +74,7 @@ describe("ChamaGroup - Member Management", function () {
       const groupConfig = {
         name: "Small Group",
         contributionAmount: DEFAULT_CONTRIBUTION,
-        maxMembers: 2n,
+        maxMembers: 3n,
         startDate,
         endDate,
         contributionFrequency: "weekly",
@@ -96,6 +96,7 @@ describe("ChamaGroup - Member Management", function () {
       await time.increaseTo(startDate);
 
       // Add 2 members
+      await group.write.joinGroup({ account: user1.account });
       await group.write.joinGroup( { account: user2.account } );
       await group.write.joinGroup( { account: user3.account } );
 
