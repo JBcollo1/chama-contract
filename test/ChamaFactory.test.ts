@@ -35,21 +35,23 @@ describe("ChamaFactory", function () {
       const { factory, user1, publicClient } = await loadFixture(deployFactoryFixture);
 
       const currentTime = BigInt(await time.latest());
-      const groupConfig = {
+        const groupConfig = {
         name: "Test Group",
         contributionAmount: DEFAULT_CONTRIBUTION,
         maxMembers: 5n,
         startDate: currentTime + BigInt(ONE_WEEK_IN_SECS),
         endDate: currentTime + BigInt(ONE_MONTH_IN_SECS * 3),
         contributionFrequency: "weekly",
-        punishmentMode: 1, // Warning
+        punishmentMode: 1,       
         approvalRequired: false,
         emergencyWithdrawAllowed: true,
-      };
+        };
+
 
       const hash = await factory.write.createGroup([groupConfig], {
-        client: { wallet: user1 }
-      });
+        account: user1.account,
+        });
+
       await publicClient.waitForTransactionReceipt({ hash });
 
       expect(await factory.read.groupCounter()).to.equal(1n);
@@ -75,7 +77,7 @@ describe("ChamaFactory", function () {
       };
 
       const hash = await factory.write.createGroup([groupConfig], {
-        client: { wallet: user1 }
+        account: user1.account,
       });
       await publicClient.waitForTransactionReceipt({ hash });
 
@@ -107,7 +109,7 @@ describe("ChamaFactory", function () {
 
       await expect(
         factory.write.createGroup([invalidConfig1], {
-          client: { wallet: user1 }
+          account: user1.account
         })
       ).to.be.rejectedWith("Invalid name length");
 
@@ -120,7 +122,7 @@ describe("ChamaFactory", function () {
 
       await expect(
         factory.write.createGroup([invalidConfig2], {
-          client: { wallet: user1 }
+          account: user1.account
         })
       ).to.be.rejectedWith("Invalid contribution amount");
 
@@ -133,7 +135,7 @@ describe("ChamaFactory", function () {
 
       await expect(
         factory.write.createGroup([invalidConfig3], {
-          client: { wallet: user1 }
+          account: user1.account
         })
       ).to.be.rejectedWith("Invalid max members");
     });
@@ -156,7 +158,7 @@ describe("ChamaFactory", function () {
 
       await expect(
         factory.write.createGroup([invalidConfig], {
-          client: { wallet: user1 }
+          account: user1.account
         })
       ).to.be.rejectedWith("Start date must be in future");
     });
@@ -166,10 +168,15 @@ describe("ChamaFactory", function () {
     it("Should allow owner to pause and unpause", async function () {
       const { factory, owner } = await loadFixture(deployFactoryFixture);
 
-      await factory.write.pause([], { client: { wallet: owner } });
+      await factory.write.pause({
+        account: owner.account,
+        });
+
       expect(await factory.read.paused()).to.be.true;
 
-      await factory.write.unpause([], { client: { wallet: owner } });
+      await factory.write.unpause({
+        account: owner.account,
+      });
       expect(await factory.read.paused()).to.be.false;
     });
 
@@ -177,8 +184,11 @@ describe("ChamaFactory", function () {
       const { factory, user1 } = await loadFixture(deployFactoryFixture);
 
       await expect(
-        factory.write.pause([], { client: { wallet: user1 } })
-      ).to.be.rejectedWith("Ownable: caller is not the owner");
+        factory.write.pause({
+          account: user1.account,
+        })
+      ).to.be.rejectedWith("OwnableUnauthorizedAccount");
+
     });
   });
 });
