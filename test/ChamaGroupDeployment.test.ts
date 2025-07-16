@@ -3,6 +3,17 @@ import { getAddress } from "viem";
 import { loadFixture } from "@nomicfoundation/hardhat-toolbox-viem/network-helpers";
 import { deployGroupFixture } from "./fixtures/chamaFixtures";
 
+type GroupRules = {
+  name: string;
+  contributionAmount: bigint;
+  contributionFrequency: string;
+  maxMembers: bigint;
+  startDate: bigint;
+  endDate: bigint;
+  punishmentMode: number;
+  approvalRequired: boolean;
+  emergencyWithdrawAllowed: boolean;
+};
 describe("ChamaGroup - Deployment", function () {
   describe("Deployment", function () {
     it("Should deploy with correct initial state", async function () {
@@ -15,7 +26,7 @@ describe("ChamaGroup - Deployment", function () {
       expect(await group.read.isActive()).to.be.true;
       expect(await group.read.totalFunds()).to.equal(0n);
 
-      const rules = await group.read.rules();
+      const rules = await group.read.rules() as GroupRules;
       expect(rules.name).to.equal(groupConfig.name);
       expect(rules.contributionAmount).to.equal(groupConfig.contributionAmount);
       expect(rules.maxMembers).to.equal(groupConfig.maxMembers);
