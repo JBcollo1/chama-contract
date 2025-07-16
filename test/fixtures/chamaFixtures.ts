@@ -86,8 +86,9 @@ export async function setupGroupWithMembers() {
   await time.increaseTo(startDate);
 
   // Add members
-  await group.write.joinGroup({ client: { wallet: user2 } });
-  await group.write.joinGroup({ client: { wallet: user3 } });
+  await group.write.joinGroup({ account: user2 });
+
+  await group.write.joinGroup({ account: user3 });
 
   return { ...fixture, members: [user2, user3] };
 }
