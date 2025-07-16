@@ -1,160 +1,24 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/security/Pausable.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
-/**
- * @title ChamaFactory
- * @dev Factory contract for deploying and managing ChamaGroup contracts
- */
-contract ChamaFactory is Ownable, Pausable {
-    using SafeMath for uint256;
+import "@openzeppelin/contracts/utils/Pausable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-    // Events
-    event GroupCreated(
-        address indexed creator,
-        address indexed groupAddress,
-        string name,
-        uint256 contributionAmount,
-        uint256 maxMembers
-    );
-
-    // State variables
-    mapping(address => address[]) public creatorGroups;
-    mapping(address => bool) public isValidGroup;
-    address[] public allGroups;
-    uint256 public groupCounter;
-
-    // Constants
-    uint256 public constant MAX_GROUPS_PER_CREATOR = 10;
-    uint256 public constant MIN_CONTRIBUTION_AMOUNT = 0.001 ether;
-    uint256 public constant MAX_CONTRIBUTION_AMOUNT = 100 ether;
-    uint256 public constant MIN_MEMBERS = 3;
-    uint256 public constant MAX_MEMBERS = 100;
-
-    struct GroupConfig {
-        string name;
-        uint256 contributionAmount;
-        uint256 maxMembers;
-        uint256 startDate;
-        uint256 endDate;
-        string contributionFrequency;
-        ChamaGroup.PunishmentAction punishmentMode;
-        bool approvalRequired;
-        bool emergencyWithdrawAllowed;
-    }
-
-    /**
-     * @dev Creates a new ChamaGroup contract
-     * @param config Group configuration parameters
-     */
-    function createGroup(GroupConfig memory config) external whenNotPaused {
-        require(bytes(config.name).length > 0 && bytes(config.name).length <= 50, "Invalid name length");
-        require(config.contributionAmount >= MIN_CONTRIBUTION_AMOUNT && 
-                config.contributionAmount <= MAX_CONTRIBUTION_AMOUNT, "Invalid contribution amount");
-        require(config.maxMembers >= MIN_MEMBERS && config.maxMembers <= MAX_MEMBERS, "Invalid max members");
-        require(config.startDate > block.timestamp, "Start date must be in future");
-        require(config.endDate > config.startDate, "End date must be after start date");
-        require(config.endDate <= block.timestamp + 365 days, "End date too far in future");
-        require(creatorGroups[msg.sender].length < MAX_GROUPS_PER_CREATOR, "Too many groups created");
-
-        ChamaGroup newGroup = new ChamaGroup(
-            config.name,
-            config.contributionAmount,
-            config.maxMembers,
-            config.startDate,
-            config.endDate,
-            config.contributionFrequency,
-            config.punishmentMode,
-            config.approvalRequired,
-            config.emergencyWithdrawAllowed,
-            msg.sender
-        );
-
-        address groupAddress = address(newGroup);
-        creatorGroups[msg.sender].push(groupAddress);
-        isValidGroup[groupAddress] = true;
-        allGroups.push(groupAddress);
-        groupCounter++;
-
-        emit GroupCreated(msg.sender, groupAddress, config.name, config.contributionAmount, config.maxMembers);
-    }
-
-    /**
-     * @dev Get groups created by a specific creator
-     */
-    function getCreatorGroups(address creator) external view returns (address[] memory) {
-        return creatorGroups[creator];
-    }
-
-    /**
-     * @dev Get all groups
-     */
-    function getAllGroups() external view returns (address[] memory) {
-        return allGroups;
-    }
-
-    /**
-     * @dev Emergency pause function
-     */
-    function pause() external onlyOwner {
-        _pause();
-    }
-
-    /**
-     * @dev Unpause function
-     */
-    function unpause() external onlyOwner {
-        _unpause();
-    }
-}
+import "./ChamaStructs.sol";
 
 /**
  * @title ChamaGroup
  * @dev Individual group savings contract
  */
 contract ChamaGroup is ReentrancyGuard, Pausable {
-    using SafeMath for uint256;
-
-    // Enums
-    enum PunishmentAction { None, Warning, Fine, Ban }
-
-    // Structs
-    struct Member {
-        bool exists;
-        bool isActive;
-        uint256 joinedAt;
-        uint256 totalContributed;
-        uint256 missedContributions;
-    }
-
-    struct Punishment {
-        PunishmentAction action;
-        string reason;
-        bool isActive;
-        uint256 issuedAt;
-        uint256 fineAmount;
-    }
-
-    struct GroupRules {
-        string name;
-        uint256 contributionAmount;
-        string contributionFrequency;
-        uint256 maxMembers;
-        uint256 startDate;
-        uint256 endDate;
-        PunishmentAction punishmentMode;
-        bool approvalRequired;
-        bool emergencyWithdrawAllowed;
-    }
+    // using SafeMath for uint256;
+    using ChamaStructs for *;
 
     // State variables
-    GroupRules public rules;
-    mapping(address => Member) public members;
-    mapping(address => Punishment) public punishments;
+    ChamaStructs.GroupRules public rules;
+    mapping(address => ChamaStructs.Member) public members;
+    mapping(address => ChamaStructs.Punishment) public punishments;
     mapping(address => mapping(uint256 => bool)) public contributions;
     mapping(address => bool) public admins;
     mapping(address => bool) public joinRequests;
@@ -175,7 +39,7 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
     event JoinRequestSubmitted(address indexed user, uint256 timestamp);
     event JoinRequestApproved(address indexed user, address indexed approver);
     event ContributionMade(address indexed user, uint256 amount, uint256 period, uint256 timestamp);
-    event MemberPunished(address indexed user, string reason, PunishmentAction action, uint256 fineAmount);
+    event MemberPunished(address indexed user, string reason, ChamaStructs.PunishmentAction action, uint256 fineAmount);
     event PunishmentCancelled(address indexed user);
     event EmergencyWithdrawTriggered(address indexed admin, uint256 amount);
     event AdminAdded(address indexed admin);
@@ -210,12 +74,12 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
         uint256 _startDate,
         uint256 _endDate,
         string memory _contributionFrequency,
-        PunishmentAction _punishmentMode,
+        ChamaStructs.PunishmentAction _punishmentMode,
         bool _approvalRequired,
         bool _emergencyWithdrawAllowed,
         address _creator
     ) {
-        rules = GroupRules({
+        rules = ChamaStructs.GroupRules({
             name: _name,
             contributionAmount: _contributionAmount,
             contributionFrequency: _contributionFrequency,
@@ -267,7 +131,7 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
      * @dev Internal function to add member
      */
     function _addMember(address user) internal {
-        members[user] = Member({
+        members[user] = ChamaStructs.Member({
             exists: true,
             isActive: true,
             joinedAt: block.timestamp,
@@ -288,8 +152,10 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
         require(!contributions[msg.sender][period], "Already contributed this period");
 
         contributions[msg.sender][period] = true;
-        members[msg.sender].totalContributed = members[msg.sender].totalContributed.add(msg.value);
-        totalFunds = totalFunds.add(msg.value);
+        members[msg.sender].totalContributed += msg.value;
+
+        totalFunds += msg.value;
+
 
         emit ContributionMade(msg.sender, msg.value, period, block.timestamp);
     }
@@ -298,13 +164,13 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
      * @dev Pay fine for punishment
      */
     function payFine() external payable onlyActiveMember nonReentrant {
-        Punishment storage punishment = punishments[msg.sender];
+        ChamaStructs.Punishment storage punishment = punishments[msg.sender];
         require(punishment.isActive, "No active punishment");
-        require(punishment.action == PunishmentAction.Fine, "Not a fine punishment");
+        require(punishment.action == ChamaStructs.PunishmentAction.Fine, "Not a fine punishment");
         require(msg.value == punishment.fineAmount, "Incorrect fine amount");
 
         punishment.isActive = false;
-        totalFunds = totalFunds.add(msg.value);
+        totalFunds += msg.value;
         
         emit FineCollected(msg.sender, msg.value);
     }
@@ -329,14 +195,14 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
      * @dev Apply punishment based on group rules
      */
     function _applyPunishment(address user, string memory reason) internal {
-        if (rules.punishmentMode == PunishmentAction.None) return;
+        if (rules.punishmentMode == ChamaStructs.PunishmentAction.None) return;
 
         uint256 fineAmount = 0;
-        if (rules.punishmentMode == PunishmentAction.Fine) {
+        if (rules.punishmentMode == ChamaStructs.PunishmentAction.Fine) {
             fineAmount = FINE_AMOUNT;
         }
 
-        punishments[user] = Punishment({
+        punishments[user] = ChamaStructs.Punishment({
             action: rules.punishmentMode,
             reason: reason,
             isActive: true,
@@ -344,7 +210,7 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
             fineAmount: fineAmount
         });
 
-        if (rules.punishmentMode == PunishmentAction.Ban) {
+        if (rules.punishmentMode == ChamaStructs.PunishmentAction.Ban) {
             members[user].isActive = false;
         }
 
@@ -356,18 +222,18 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
      */
     function punishMember(
         address user,
-        PunishmentAction action,
+        ChamaStructs.PunishmentAction action,
         string calldata reason
     ) external onlyAdmin {
         require(members[user].exists, "User is not a member");
-        require(action != PunishmentAction.None, "Invalid punishment action");
+        require(action != ChamaStructs.PunishmentAction.None, "Invalid punishment action");
         
         uint256 fineAmount = 0;
-        if (action == PunishmentAction.Fine) {
+        if (action == ChamaStructs.PunishmentAction.Fine) {
             fineAmount = FINE_AMOUNT;
         }
 
-        punishments[user] = Punishment({
+        punishments[user] = ChamaStructs.Punishment({
             action: action,
             reason: reason,
             isActive: true,
@@ -375,7 +241,7 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
             fineAmount: fineAmount
         });
 
-        if (action == PunishmentAction.Ban) {
+        if (action == ChamaStructs.PunishmentAction.Ban) {
             members[user].isActive = false;
         }
 
@@ -391,7 +257,7 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
         punishments[user].isActive = false;
         
         // Reactivate member if they were banned
-        if (punishments[user].action == PunishmentAction.Ban) {
+        if (punishments[user].action == ChamaStructs.PunishmentAction.Ban) {
             members[user].isActive = true;
         }
         
@@ -466,12 +332,12 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
      */
     function getMemberDetails(address user) external view returns (
         bool exists,
-        bool isActive,
+        bool active,
         uint256 joinedAt,
         uint256 totalContributed,
         uint256 missedContributions
     ) {
-        Member memory member = members[user];
+        ChamaStructs.Member memory member = members[user];
         return (
             member.exists,
             member.isActive,
@@ -485,13 +351,13 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
      * @dev Get punishment details
      */
     function getPunishmentDetails(address user) external view returns (
-        PunishmentAction action,
+        ChamaStructs.PunishmentAction action,
         string memory reason,
-        bool isActive,
+        bool active,
         uint256 issuedAt,
         uint256 fineAmount
     ) {
-        Punishment memory punishment = punishments[user];
+        ChamaStructs.Punishment memory punishment = punishments[user];
         return (
             punishment.action,
             punishment.reason,
