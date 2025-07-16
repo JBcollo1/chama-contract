@@ -22,7 +22,12 @@ describe("ChamaGroup - Member Management", function () {
       await publicClient.waitForTransactionReceipt({ hash });
 
       expect(await group.read.memberCount()).to.equal(1n);
-      const member = await group.read.getMemberDetails([user2.account.address]);
+      const member = await group.read.getMemberDetails([user2.account.address]) as [ boolean, 
+        boolean, 
+        bigint,  
+        bigint,
+        bigint   
+        ];
       expect(member[0]).to.be.true; // exists
       expect(member[1]).to.be.true; // isActive
     });
@@ -135,7 +140,7 @@ describe("ChamaGroup - Member Management", function () {
 
       // Submit join request
       const joinHash = await group.write.joinGroup([], { client: { wallet: user2 } });
-      await publicClient.waitForTransactionReceipt({ joinHash });
+      await publicClient.waitForTransactionReceipt({ hash : joinHash });
 
       // Should not be a member yet
       expect(await group.read.memberCount()).to.equal(0n);
@@ -144,7 +149,7 @@ describe("ChamaGroup - Member Management", function () {
       const approveHash = await group.write.approveJoinRequest([user2.account.address], {
         client: { wallet: user1 }
       });
-      await publicClient.waitForTransactionReceipt({ approveHash });
+      await publicClient.waitForTransactionReceipt({ hash: approveHash });
 
       // Now should be a member
       expect(await group.read.memberCount()).to.equal(1n);

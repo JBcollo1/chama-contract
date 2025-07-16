@@ -52,7 +52,7 @@ export async function deployGroupFixture() {
 
   // Create group
   const hash = await factory.write.createGroup([groupConfig], {
-    client: { wallet: user1 }
+    account: user1.account
   });
   await publicClient.waitForTransactionReceipt({ hash });
 
@@ -85,10 +85,14 @@ export async function setupGroupWithMembers() {
 
   await time.increaseTo(startDate);
 
-  // Add members
-  await group.write.joinGroup({ account: user2 });
+  // Add members - pass empty array for function args, config as second parameter
+  await group.write.joinGroup([], {
+    account: user2.account
+  });
 
-  await group.write.joinGroup({ account: user3 });
+  await group.write.joinGroup([], {
+    account: user3.account
+  });
 
   return { ...fixture, members: [user2, user3] };
 }
@@ -98,12 +102,12 @@ export async function setupGroupWithContributions() {
   const { group, user2, user3, publicClient, groupConfig } = fixture;
 
   // Both members contribute in first period
-  await group.write.contribute({
-    client: { wallet: user2 },
+  await group.write.contribute([], {
+    account: user2.account,
     value: groupConfig.contributionAmount
   });
-  await group.write.contribute({
-    client: { wallet: user3 },
+  await group.write.contribute([], {
+    account: user3.account,
     value: groupConfig.contributionAmount
   });
 
