@@ -49,4 +49,19 @@ library ChamaStructs {
         bool approvalRequired;
         bool emergencyWithdrawAllowed;
     }
+    enum ProposalType {
+    None,
+    CancelPunishment
+    }
+
+    struct Proposal {
+        ProposalType proposalType;
+        address target;
+        uint256 votesFor;
+        uint256 votesAgainst;
+        uint256 createdAt;
+        bool executed;
+        mapping(address => bool) hasVoted;
+    }
+
 }

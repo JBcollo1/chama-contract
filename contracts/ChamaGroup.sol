@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
@@ -12,18 +11,30 @@ import "./ChamaStructs.sol";
  * @dev Individual group savings contract
  */
 contract ChamaGroup is ReentrancyGuard, Pausable {
-    // using SafeMath for uint256;
     using ChamaStructs for *;
 
     // State variables
     ChamaStructs.GroupRules public rules;
     mapping(address => ChamaStructs.Member) public members;
     mapping(address => ChamaStructs.Punishment) public punishments;
+    
+    struct Proposal {
+        ChamaStructs.ProposalType proposalType;
+        address target;
+        uint256 votesFor;
+        uint256 votesAgainst;
+        uint256 createdAt;
+        bool executed;
+        mapping(address => bool) hasVoted;
+    }
+
+    mapping(uint256 => Proposal) public proposals;
     mapping(address => mapping(uint256 => bool)) public contributions;
     mapping(address => bool) public admins;
     mapping(address => bool) public joinRequests;
     
     uint256 public memberCount;
+    uint256 public activeMemberCount; 
     uint256 public totalFunds;
     uint256 public currentPeriod;
     address public creator;
@@ -33,6 +44,11 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
     uint256 public constant PERIOD_DURATION = 7 days; // Weekly periods
     uint256 public constant FINE_AMOUNT = 0.01 ether;
     uint256 public constant MAX_MISSED_CONTRIBUTIONS = 3;
+    uint256 public constant MIN_VOTING_QUORUM = 50; // 50% of active members
+
+    // Proposal settings
+    uint256 public proposalDuration = 3 days;
+    uint256 public proposalCounter;
 
     // Events
     event MemberJoined(address indexed user, uint256 timestamp);
@@ -139,6 +155,7 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
             missedContributions: 0
         });
         memberCount++;
+        activeMemberCount++;
         emit MemberJoined(user, block.timestamp);
     }
 
@@ -153,9 +170,7 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
 
         contributions[msg.sender][period] = true;
         members[msg.sender].totalContributed += msg.value;
-
         totalFunds += msg.value;
-
 
         emit ContributionMade(msg.sender, msg.value, period, block.timestamp);
     }
@@ -163,7 +178,7 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
     /**
      * @dev Pay fine for punishment
      */
-    function payFine() external payable  nonReentrant {
+    function payFine() external payable nonReentrant {
         ChamaStructs.Punishment storage punishment = punishments[msg.sender];
         require(punishment.isActive, "No active punishment");
         require(punishment.action == ChamaStructs.PunishmentAction.Fine, "Not a fine punishment");
@@ -212,9 +227,96 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
 
         if (rules.punishmentMode == ChamaStructs.PunishmentAction.Ban) {
             members[user].isActive = false;
+            activeMemberCount--;
         }
 
         emit MemberPunished(user, reason, rules.punishmentMode, fineAmount);
+    }
+
+    /**
+     * @dev Get active member count
+     */
+    function getActiveMemberCount() public view returns (uint256) {
+        return activeMemberCount;
+    }
+
+    /**
+     * @dev Internal function to cancel punishment
+     */
+    function _cancelPunishmentInternal(address user) internal {
+        require(punishments[user].isActive, "No active punishment");
+        
+        // Reactivate member if they were banned
+        if (punishments[user].action == ChamaStructs.PunishmentAction.Ban) {
+            members[user].isActive = true;
+            activeMemberCount++;
+        }
+        
+        punishments[user].isActive = false;
+        members[user].missedContributions = 0;
+        
+        emit PunishmentCancelled(user);
+    }
+
+    /**
+     * @dev Cancel punishment (admin only)
+     */
+    function cancelPunishment(address user) external onlyAdmin {
+        _cancelPunishmentInternal(user);
+    }
+
+    /**
+     * @dev Propose to cancel punishment
+     */
+    function proposeCancelPunishment(address user) external onlyActiveMember returns (uint256) {
+        require(punishments[user].isActive, "No active punishment to cancel");
+
+        proposalCounter++;
+        Proposal storage p = proposals[proposalCounter];
+        p.proposalType = ChamaStructs.ProposalType.CancelPunishment;
+        p.target = user;
+        p.createdAt = block.timestamp;
+
+        return proposalCounter;
+    }
+
+    /**
+     * @dev Vote on proposal
+     */
+    function voteOnProposal(uint256 proposalId, bool support) external onlyActiveMember {
+        Proposal storage p = proposals[proposalId];
+        require(!p.executed, "Already executed");
+        require(block.timestamp <= p.createdAt + proposalDuration, "Voting period over");
+        require(!p.hasVoted[msg.sender], "Already voted");
+
+        p.hasVoted[msg.sender] = true;
+
+        if (support) {
+            p.votesFor++;
+        } else {
+            p.votesAgainst++;
+        }
+    }
+
+    /**
+     * @dev Execute proposal
+     */
+    function executeProposal(uint256 proposalId) external onlyAdmin {
+        Proposal storage p = proposals[proposalId];
+        require(!p.executed, "Already executed");
+        require(block.timestamp > p.createdAt + proposalDuration, "Voting still active");
+        
+        uint256 totalVotes = p.votesFor + p.votesAgainst;
+        uint256 activeMembers = getActiveMemberCount();
+        
+        require(totalVotes >= (activeMembers * MIN_VOTING_QUORUM) / 100, "Insufficient participation");
+        require(p.votesFor > p.votesAgainst, "Proposal rejected");
+        
+        if (p.proposalType == ChamaStructs.ProposalType.CancelPunishment) {
+            _cancelPunishmentInternal(p.target);
+        }
+        
+        p.executed = true;
     }
 
     /**
@@ -243,25 +345,10 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
 
         if (action == ChamaStructs.PunishmentAction.Ban) {
             members[user].isActive = false;
+            activeMemberCount--;
         }
 
         emit MemberPunished(user, reason, action, fineAmount);
-    }
-
-    /**
-     * @dev Cancel punishment (admin only)
-     */
-    function cancelPunishment(address user) external onlyAdmin {
-        require(punishments[user].isActive, "No active punishment");
-        
-        punishments[user].isActive = false;
-        
-        // Reactivate member if they were banned
-        if (punishments[user].action == ChamaStructs.PunishmentAction.Ban) {
-            members[user].isActive = true;
-        }
-        
-        emit PunishmentCancelled(user);
     }
 
     /**
