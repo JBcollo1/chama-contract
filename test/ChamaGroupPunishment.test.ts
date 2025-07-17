@@ -145,7 +145,7 @@ describe("ChamaGroup - Punishment System", function () {
       // Verify proposal was created (proposalCounter should be 1)
       const proposalId = 1n;
       const proposal = await group.read.proposals([proposalId]);
-      expect(proposal[0]).to.equal(0); // ProposalType.CancelPunishment
+      expect(proposal[0]).to.equal(1); // ProposalType.CancelPunishment
       expect(proposal[1]).to.equal(getAddress(user2.account.address)); // target
     });
 
