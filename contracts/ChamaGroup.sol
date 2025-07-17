@@ -37,6 +37,8 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
     uint256 public activeMemberCount; 
     uint256 public totalFunds;
     uint256 public currentPeriod;
+    // uint256 consecutiveFines;
+
     address public creator;
     bool public isActive;
 
@@ -152,7 +154,8 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
             isActive: true,
             joinedAt: block.timestamp,
             totalContributed: 0,
-            missedContributions: 0
+            missedContributions: 0,
+            consecutiveFines:0
         });
         memberCount++;
         activeMemberCount++;
@@ -185,6 +188,7 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
         require(msg.value == punishment.fineAmount, "Incorrect fine amount");
 
         punishment.isActive = false;
+        members[msg.sender].consecutiveFines = 0;
         totalFunds += msg.value;
         
         emit FineCollected(msg.sender, msg.value);
@@ -213,24 +217,34 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
         if (rules.punishmentMode == ChamaStructs.PunishmentAction.None) return;
 
         uint256 fineAmount = 0;
+        ChamaStructs.PunishmentAction action = rules.punishmentMode;
+
         if (rules.punishmentMode == ChamaStructs.PunishmentAction.Fine) {
             fineAmount = FINE_AMOUNT;
+
+            // Increment fine streak
+            members[user].consecutiveFines++;
+
+            // If they've been fined 3 times in a row, escalate to ban
+            if (members[user].consecutiveFines >= 3) {
+                action = ChamaStructs.PunishmentAction.Ban;
+                members[user].isActive = false;
+                activeMemberCount--;
+            }
+        } else {
+            // If punishment is not a fine, reset the fine streak
+            members[user].consecutiveFines = 0;
         }
 
         punishments[user] = ChamaStructs.Punishment({
-            action: rules.punishmentMode,
+            action: action,
             reason: reason,
             isActive: true,
             issuedAt: block.timestamp,
             fineAmount: fineAmount
         });
 
-        if (rules.punishmentMode == ChamaStructs.PunishmentAction.Ban) {
-            members[user].isActive = false;
-            activeMemberCount--;
-        }
-
-        emit MemberPunished(user, reason, rules.punishmentMode, fineAmount);
+        emit MemberPunished(user, reason, action, fineAmount);
     }
 
     /**
@@ -254,6 +268,7 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
         
         punishments[user].isActive = false;
         members[user].missedContributions = 0;
+        members[user].consecutiveFines = 0;
         
         emit PunishmentCancelled(user);
     }

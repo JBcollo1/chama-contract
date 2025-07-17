@@ -16,6 +16,7 @@ library ChamaStructs {
         uint256 joinedAt;
         uint256 totalContributed;
         uint256 missedContributions;
+        uint256 consecutiveFines;
     }
 
     struct Punishment {
