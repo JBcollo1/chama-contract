@@ -61,11 +61,11 @@ describe("ChamaGroup - Contributions", function () {
     });
 
     it("Should reject contributions from non-members", async function () {
-      const { group, user4, groupConfig } = await loadFixture(setupGroupWithMembers);
+      const { group, user6, groupConfig } = await loadFixture(setupGroupWithMembers);
 
       await expect(
         group.write.contribute({
-          account: user4.account,
+          account: user6.account,
           value: groupConfig.contributionAmount
         })
       ).to.be.rejectedWith("Not an active member");

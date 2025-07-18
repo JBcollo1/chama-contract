@@ -14,7 +14,7 @@ export const FINE_AMOUNT = parseEther("0.01");
 
 // Fixtures
 export async function deployFactoryFixture() {
-  const [owner, user1, user2, user3, user4] = await hre.viem.getWalletClients();
+  const [owner, user1, user2, user3, user4, user6] = await hre.viem.getWalletClients();
 
   const factory = await hre.viem.deployContract("ChamaFactory", [owner.account.address]);
 
@@ -27,12 +27,13 @@ export async function deployFactoryFixture() {
     user2,
     user3,
     user4,
+    user6,
     publicClient,
   };
 }
 
 export async function deployGroupFixture() {
-  const { factory, owner, user1, user2, user3, user4, publicClient } = 
+  const { factory, owner, user1, user2, user3, user4, user6, publicClient } = 
     await loadFixture(deployFactoryFixture);
 
   const currentTime = BigInt(await time.latest());
@@ -74,6 +75,7 @@ export async function deployGroupFixture() {
     user2,
     user3,
     user4,
+    user6,
     publicClient,
     startDate,
     endDate,
