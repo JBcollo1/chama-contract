@@ -27,6 +27,8 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
         bool executed;
         mapping(address => bool) hasVoted;
     }
+    address[] public payoutQueue;
+    mapping(uint256 => address) public payoutHistory;
 
     mapping(uint256 => Proposal) public proposals;
     mapping(address => mapping(uint256 => bool)) public contributions;
@@ -161,6 +163,19 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
         activeMemberCount++;
         emit MemberJoined(user, block.timestamp);
     }
+    /**
+     * @dev payoutqueue
+     */
+    function setPayoutQueue(address[] calldata queue) external {
+        require(msg.sender == creator, "Only creator");
+        require(payoutQueue.length == 0, "Queue is already set now");
+        require(queue.length == memberCount,"Invalid queue length");
+        for (uint i = 0; i < queue.length; i++) {
+           require(members[queue[i]].exists, "Invalid member in queue");
+        }
+        payoutQueue = queue;
+    }
+
 
     /**
      * @dev Make contribution
@@ -403,6 +418,41 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
         
         admins[admin] = false;
         emit AdminRemoved(admin);
+    }
+    
+
+    /**
+     * @dev Process rotation payout
+     */
+
+    function processRotationPayout() external onlyAdmin onlyActiveGroup nonReentrant {
+        uint256 period = getCurrentPeriod();
+        require(payoutHistory[period] == address(0), "Already paid this period");
+
+        // Check all active members contributed this period
+        for (uint i = 0; i < payoutQueue.length; i++) {
+            address member = payoutQueue[i];
+            if (members[member].isActive && !punishments[member].isActive) {
+                require(contributions[member][period], "Member not contributed yet");
+            }
+        }
+
+        address recipient = payoutQueue[period % payoutQueue.length];
+
+        // Skip if banned or has unpaid fine
+        while (!members[recipient].isActive || punishments[recipient].isActive) {
+            period++;
+            recipient = payoutQueue[period % payoutQueue.length];
+        }
+
+        payoutHistory[period] = recipient;
+
+        uint256 payoutAmount = rules.contributionAmount * activeMemberCount;
+
+        totalFunds -= payoutAmount;
+
+        (bool success, ) = payable(recipient).call{value: payoutAmount}("");
+        require(success, "Payout failed");
     }
 
     /**
