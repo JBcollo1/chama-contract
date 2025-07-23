@@ -163,7 +163,7 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
         isActive = true;
         currentPeriod = 0;
 
-        // Token configuration
+        // Token 
         if (_contributionToken != address(0)) {
             contributionToken = IERC20(_contributionToken);
             isTokenBased = true;
