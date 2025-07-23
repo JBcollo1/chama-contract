@@ -51,9 +51,13 @@ library ChamaStructs {
         bool emergencyWithdrawAllowed;
     }
     enum ProposalType {
-    None,
-    CancelPunishment
+        None,
+        CancelPunishment,
+        AddAdmin,
+        RemoveAdmin,
+        KickMember
     }
+
 
     struct Proposal {
         ProposalType proposalType;

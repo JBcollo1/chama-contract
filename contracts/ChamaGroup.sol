@@ -3,15 +3,18 @@ pragma solidity ^0.8.19;
 
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import "./ChamaStructs.sol";
 
 /**
- * @title ChamaGroup
- * @dev Individual group savings contract
+ * @title Enhanced ChamaGroup
+ * @dev Individual group savings contract with token support and advanced features
  */
 contract ChamaGroup is ReentrancyGuard, Pausable {
     using ChamaStructs for *;
+    using SafeERC20 for IERC20;
 
     // State variables
     ChamaStructs.GroupRules public rules;
@@ -21,17 +24,30 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
     struct Proposal {
         ChamaStructs.ProposalType proposalType;
         address target;
+        uint256 value; // For parameter changes
+        string description;
         uint256 votesFor;
         uint256 votesAgainst;
         uint256 createdAt;
         bool executed;
-        mapping(address => bool) hasVoted;
+        // FIXED: Removed nested mapping from struct
     }
-    address[] public payoutQueue;
-    mapping(uint256 => address) public payoutHistory;
 
+    struct PayoutInfo {
+        address recipient;
+        uint256 amount;
+        uint256 timestamp;
+        bool wasSkipped;
+    }
+
+    address[] public payoutQueue;
+    mapping(uint256 => PayoutInfo) public payoutHistory;
+    mapping(address => uint256[]) public memberPayoutPeriods; // Track member payout history
+    
     mapping(uint256 => Proposal) public proposals;
-    mapping(address => mapping(uint256 => bool)) public contributions;
+    // FIXED: Moved hasVoted mapping outside of struct
+    mapping(uint256 => mapping(address => bool)) public proposalVotes;
+    mapping(address => mapping(uint256 => uint256)) public contributionTimestamps; // Track when contributions were made
     mapping(address => bool) public admins;
     mapping(address => bool) public joinRequests;
     
@@ -39,10 +55,18 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
     uint256 public activeMemberCount; 
     uint256 public totalFunds;
     uint256 public currentPeriod;
-    // uint256 consecutiveFines;
+    uint256 public skippedPayouts; // Track skipped payouts for rotation adjustment
 
     address public creator;
     bool public isActive;
+
+    // Token support
+    IERC20 public contributionToken; // If address(0), use native currency
+    bool public isTokenBased;
+
+    // Enhanced timing controls
+    uint256 public gracePeriod = 2 days; // Grace period for contributions
+    uint256 public contributionWindow = 5 days; // Window within period to contribute
 
     // Constants
     uint256 public constant PERIOD_DURATION = 7 days; // Weekly periods
@@ -54,19 +78,29 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
     uint256 public proposalDuration = 3 days;
     uint256 public proposalCounter;
 
-    // Events
+    // Enhanced events
     event MemberJoined(address indexed user, uint256 timestamp);
+    event MemberLeft(address indexed user, uint256 refundAmount, uint256 timestamp);
     event JoinRequestSubmitted(address indexed user, uint256 timestamp);
     event JoinRequestApproved(address indexed user, address indexed approver);
     event ContributionMade(address indexed user, uint256 amount, uint256 period, uint256 timestamp);
     event MemberPunished(address indexed user, string reason, ChamaStructs.PunishmentAction action, uint256 fineAmount);
     event PunishmentCancelled(address indexed user);
+    event PayoutProcessed(address indexed recipient, uint256 amount, uint256 period, bool wasSkipped);
     event EmergencyWithdrawTriggered(address indexed admin, uint256 amount);
     event AdminAdded(address indexed admin);
     event AdminRemoved(address indexed admin);
     event FineCollected(address indexed user, uint256 amount);
+    event ProposalCreated(uint256 indexed proposalId, ChamaStructs.ProposalType proposalType, address indexed creator);
+    event ProposalExecuted(uint256 indexed proposalId, bool success);
+    event CreatorTransferred(address indexed oldCreator, address indexed newCreator);
 
-    // Modifiers
+    // FIXED: Added onlyCreator modifier
+    modifier onlyCreator() {
+        require(msg.sender == creator, "Only creator");
+        _;
+    }
+
     modifier onlyAdmin() {
         require(admins[msg.sender], "Not admin");
         _;
@@ -85,7 +119,7 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
     }
 
     /**
-     * @dev Constructor
+     * @dev Enhanced Constructor with token support
      */
     constructor(
         string memory _name,
@@ -97,7 +131,10 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
         ChamaStructs.PunishmentAction _punishmentMode,
         bool _approvalRequired,
         bool _emergencyWithdrawAllowed,
-        address _creator
+        address _creator,
+        address _contributionToken, // address(0) for native currency
+        uint256 _gracePeriod,
+        uint256 _contributionWindow
     ) {
         rules = ChamaStructs.GroupRules({
             name: _name,
@@ -115,6 +152,38 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
         admins[_creator] = true;
         isActive = true;
         currentPeriod = 0;
+
+        // Token configuration
+        if (_contributionToken != address(0)) {
+            contributionToken = IERC20(_contributionToken);
+            isTokenBased = true;
+        }
+
+        // Timing configuration
+        if (_gracePeriod > 0) gracePeriod = _gracePeriod;
+        if (_contributionWindow > 0) contributionWindow = _contributionWindow;
+    }
+
+    // FIXED: Added fallback and receive functions
+    receive() external payable {}
+    fallback() external payable {}
+
+    /**
+     * @dev Transfer creator role (creator only)
+     */
+    function transferCreator(address newCreator) external onlyCreator {
+        require(newCreator != address(0), "Invalid address");
+        require(newCreator != creator, "Already creator");
+        
+        address oldCreator = creator;
+        creator = newCreator;
+        
+        // Transfer admin rights
+        admins[newCreator] = true;
+        // Optionally remove old creator's admin rights
+        // admins[oldCreator] = false;
+        
+        emit CreatorTransferred(oldCreator, newCreator);
     }
 
     /**
@@ -132,6 +201,47 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
         } else {
             _addMember(msg.sender);
         }
+    }
+
+    /**
+     * @dev Leave group with potential refund
+     */
+    function leaveGroup() external onlyActiveMember nonReentrant {
+        address user = msg.sender;
+        require(!punishments[user].isActive, "Cannot leave with active punishment");
+        
+        uint256 refundAmount = _calculateRefund(user);
+        
+        // FIXED: Zero state before transfer for extra reentrancy protection
+        members[user].isActive = false;
+        activeMemberCount--;
+        
+        // Process refund if applicable
+        if (refundAmount > 0) {
+            totalFunds -= refundAmount;
+            _transferFunds(user, refundAmount);
+        }
+        
+        emit MemberLeft(user, refundAmount, block.timestamp);
+    }
+
+    /**
+     * @dev Calculate refund amount for leaving member
+     */
+    function _calculateRefund(address user) internal view returns (uint256) {
+        // Check if member has received payout
+        if (memberPayoutPeriods[user].length > 0) {
+            return 0; // No refund if already received payout
+        }
+        
+        // Return their total contributions minus any fines
+        uint256 totalContributed = members[user].totalContributed;
+        uint256 fineDeductions = members[user].missedContributions * FINE_AMOUNT;
+        
+        if (totalContributed > fineDeductions) {
+            return totalContributed - fineDeductions;
+        }
+        return 0;
     }
 
     /**
@@ -157,76 +267,103 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
             joinedAt: block.timestamp,
             totalContributed: 0,
             missedContributions: 0,
-            consecutiveFines:0
+            consecutiveFines: 0
         });
         memberCount++;
         activeMemberCount++;
         emit MemberJoined(user, block.timestamp);
     }
+
     /**
-     * @dev payoutqueue
+     * @dev Set payout queue (creator only)
      */
-    function setPayoutQueue(address[] calldata queue) external {
-        require(msg.sender == creator, "Only creator");
-        require(payoutQueue.length == 0, "Queue is already set now");
-        require(queue.length == memberCount,"Invalid queue length");
+    function setPayoutQueue(address[] calldata queue) external onlyCreator {
+        require(payoutQueue.length == 0, "Queue is already set");
+        require(queue.length == memberCount, "Invalid queue length");
+        
         for (uint i = 0; i < queue.length; i++) {
-           require(members[queue[i]].exists, "Invalid member in queue");
+            require(members[queue[i]].exists, "Invalid member in queue");
         }
         payoutQueue = queue;
     }
 
-
     /**
-     * @dev Make contribution
+     * @dev Enhanced contribution with token support and timing validation
      */
     function contribute() external payable onlyActiveMember onlyActiveGroup nonReentrant {
-        require(msg.value == rules.contributionAmount, "Incorrect contribution amount");
-        
         uint256 period = getCurrentPeriod();
-        require(!contributions[msg.sender][period], "Already contributed this period");
+        require(contributionTimestamps[msg.sender][period] == 0, "Already contributed this period");
+        
+        // Check if within contribution window
+        uint256 periodStart = rules.startDate + (period * PERIOD_DURATION);
+        require(
+            block.timestamp <= periodStart + contributionWindow + gracePeriod,
+            "Contribution window closed"
+        );
 
-        contributions[msg.sender][period] = true;
-        members[msg.sender].totalContributed += msg.value;
-        totalFunds += msg.value;
+        if (isTokenBased) {
+            require(msg.value == 0, "Don't send ETH for token contributions");
+            contributionToken.safeTransferFrom(msg.sender, address(this), rules.contributionAmount);
+        } else {
+            require(msg.value == rules.contributionAmount, "Incorrect contribution amount");
+        }
 
-        emit ContributionMade(msg.sender, msg.value, period, block.timestamp);
+        contributionTimestamps[msg.sender][period] = block.timestamp;
+        members[msg.sender].totalContributed += rules.contributionAmount;
+        totalFunds += rules.contributionAmount;
+
+        emit ContributionMade(msg.sender, rules.contributionAmount, period, block.timestamp);
     }
 
     /**
-     * @dev Pay fine for punishment
+     * @dev Enhanced fine payment with token support
      */
     function payFine() external payable nonReentrant {
         ChamaStructs.Punishment storage punishment = punishments[msg.sender];
         require(punishment.isActive, "No active punishment");
         require(punishment.action == ChamaStructs.PunishmentAction.Fine, "Not a fine punishment");
-        require(msg.value == punishment.fineAmount, "Incorrect fine amount");
+
+        uint256 fineAmount = punishment.fineAmount;
+        
+        if (isTokenBased) {
+            require(msg.value == 0, "Don't send ETH for token fines");
+            contributionToken.safeTransferFrom(msg.sender, address(this), fineAmount);
+        } else {
+            require(msg.value == fineAmount, "Incorrect fine amount");
+        }
 
         punishment.isActive = false;
         members[msg.sender].consecutiveFines = 0;
-        totalFunds += msg.value;
+        totalFunds += fineAmount;
         
-        emit FineCollected(msg.sender, msg.value);
+        emit FineCollected(msg.sender, fineAmount);
     }
 
     /**
-     * @dev Check for missed contributions and apply punishment
+     * @dev Enhanced missed contribution check with timing validation
      */
     function checkMissedContribution(address user) external onlyAdmin {
         require(members[user].exists && members[user].isActive, "User is not active member");
         
         uint256 period = getCurrentPeriod();
-        if (period > 0 && !contributions[user][period - 1]) {
-            members[user].missedContributions++;
+        if (period > 0) {
+            uint256 prevPeriod = period - 1;
+            uint256 periodStart = rules.startDate + (prevPeriod * PERIOD_DURATION);
+            uint256 deadline = periodStart + contributionWindow + gracePeriod;
             
-            if (members[user].missedContributions >= MAX_MISSED_CONTRIBUTIONS) {
-                _applyPunishment(user, "Exceeded maximum missed contributions");
+            // Check if deadline passed and no contribution made
+            if (block.timestamp > deadline && contributionTimestamps[user][prevPeriod] == 0) {
+                members[user].missedContributions++;
+                
+                if (members[user].missedContributions >= MAX_MISSED_CONTRIBUTIONS) {
+                    _applyPunishment(user, "Exceeded maximum missed contributions");
+                }
             }
         }
     }
 
     /**
-     * @dev Apply punishment based on group rules
+     * @dev Enhanced punishment system
      */
     function _applyPunishment(address user, string memory reason) internal {
         if (rules.punishmentMode == ChamaStructs.PunishmentAction.None) return;
@@ -236,18 +373,15 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
 
         if (rules.punishmentMode == ChamaStructs.PunishmentAction.Fine) {
             fineAmount = FINE_AMOUNT;
-
-            // Increment fine streak
             members[user].consecutiveFines++;
 
-            // If they've been fined 3 times in a row, escalate to ban
+            // Escalate to ban after 3 consecutive fines
             if (members[user].consecutiveFines >= 3) {
                 action = ChamaStructs.PunishmentAction.Ban;
                 members[user].isActive = false;
                 activeMemberCount--;
             }
         } else {
-            // If punishment is not a fine, reset the fine streak
             members[user].consecutiveFines = 0;
         }
 
@@ -263,10 +397,179 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
     }
 
     /**
-     * @dev Get active member count
+     * @dev Enhanced rotation payout with skip handling
      */
-    function getActiveMemberCount() public view returns (uint256) {
-        return activeMemberCount;
+    function processRotationPayout() external onlyAdmin onlyActiveGroup nonReentrant {
+        uint256 period = getCurrentPeriod();
+        require(payoutHistory[period].recipient == address(0), "Already processed this period");
+
+        // Verify all active members contributed
+        _verifyAllContributions(period);
+
+        uint256 adjustedPeriod = (period - skippedPayouts) % payoutQueue.length;
+        address recipient = payoutQueue[adjustedPeriod];
+        bool wasSkipped = false;
+
+        // Skip if member is banned or has unpaid fine
+        if (!members[recipient].isActive || punishments[recipient].isActive) {
+            wasSkipped = true;
+            skippedPayouts++;
+            
+            // Find next eligible member
+            recipient = _findNextEligibleRecipient(adjustedPeriod);
+            require(recipient != address(0), "No eligible recipients");
+        }
+
+        uint256 payoutAmount = rules.contributionAmount * activeMemberCount;
+        totalFunds -= payoutAmount;
+
+        // Record payout
+        payoutHistory[period] = PayoutInfo({
+            recipient: recipient,
+            amount: payoutAmount,
+            timestamp: block.timestamp,
+            wasSkipped: wasSkipped
+        });
+
+        // Track member payout history
+        memberPayoutPeriods[recipient].push(period);
+
+        _transferFunds(recipient, payoutAmount);
+        emit PayoutProcessed(recipient, payoutAmount, period, wasSkipped);
+    }
+
+    /**
+     * @dev Find next eligible recipient for payout
+     */
+    function _findNextEligibleRecipient(uint256 startIndex) internal view returns (address) {
+        for (uint256 i = 1; i < payoutQueue.length; i++) {
+            uint256 nextIndex = (startIndex + i) % payoutQueue.length;
+            address candidate = payoutQueue[nextIndex];
+            
+            if (members[candidate].isActive && !punishments[candidate].isActive) {
+                return candidate;
+            }
+        }
+        return address(0);
+    }
+
+    /**
+     * @dev Verify all active members contributed for the period
+     * FIXED: Made more gas efficient by checking active status first
+     */
+    function _verifyAllContributions(uint256 period) internal view {
+        for (uint i = 0; i < payoutQueue.length; i++) {
+            address member = payoutQueue[i];
+            if (members[member].isActive && !punishments[member].isActive) {
+                require(
+                    contributionTimestamps[member][period] > 0,
+                    "Member has not contributed yet"
+                );
+            }
+        }
+    }
+
+    /**
+     * @dev Transfer funds (native or token)
+     */
+    function _transferFunds(address to, uint256 amount) internal {
+        if (isTokenBased) {
+            contributionToken.safeTransfer(to, amount);
+        } else {
+            (bool success, ) = payable(to).call{value: amount}("");
+            require(success, "Transfer failed");
+        }
+    }
+
+    /**
+     * @dev Enhanced proposal creation
+     */
+    function createProposal(
+        ChamaStructs.ProposalType proposalType,
+        address target,
+        uint256 value,
+        string calldata description
+    ) external onlyActiveMember returns (uint256) {
+        proposalCounter++;
+        Proposal storage p = proposals[proposalCounter];
+        
+        p.proposalType = proposalType;
+        p.target = target;
+        p.value = value;
+        p.description = description;
+        p.createdAt = block.timestamp;
+
+        emit ProposalCreated(proposalCounter, proposalType, msg.sender);
+        return proposalCounter;
+    }
+
+    /**
+     * @dev Vote on proposal
+     * FIXED: Updated to use external mapping
+     */
+    function voteOnProposal(uint256 proposalId, bool support) external onlyActiveMember {
+        Proposal storage p = proposals[proposalId];
+        require(!p.executed, "Already executed");
+        require(block.timestamp <= p.createdAt + proposalDuration, "Voting period over");
+        require(!proposalVotes[proposalId][msg.sender], "Already voted");
+
+        proposalVotes[proposalId][msg.sender] = true;
+
+        if (support) {
+            p.votesFor++;
+        } else {
+            p.votesAgainst++;
+        }
+    }
+
+    /**
+     * @dev Enhanced proposal execution
+     * FIXED: Improved quorum calculation to avoid rounding to zero
+     */
+    function executeProposal(uint256 proposalId) external onlyAdmin {
+        Proposal storage p = proposals[proposalId];
+        require(!p.executed, "Already executed");
+        require(block.timestamp > p.createdAt + proposalDuration, "Voting still active");
+        
+        uint256 totalVotes = p.votesFor + p.votesAgainst;
+        uint256 activeMembers = getActiveMemberCount();
+        
+        // FIXED: Use ceiling division to avoid rounding to zero
+        uint256 requiredVotes = (activeMembers * MIN_VOTING_QUORUM + 99) / 100;
+        require(totalVotes >= requiredVotes, "Insufficient participation");
+        require(p.votesFor > p.votesAgainst, "Proposal rejected");
+        
+        bool success = _executeProposalAction(p);
+        p.executed = true;
+        
+        emit ProposalExecuted(proposalId, success);
+    }
+
+    /**
+     * @dev Execute specific proposal actions
+     */
+    function _executeProposalAction(Proposal storage p) internal returns (bool) {
+        if (p.proposalType == ChamaStructs.ProposalType.CancelPunishment) {
+            _cancelPunishmentInternal(p.target);
+            return true;
+        } else if (p.proposalType == ChamaStructs.ProposalType.AddAdmin) {
+            require(!admins[p.target], "Already admin");
+            admins[p.target] = true;
+            emit AdminAdded(p.target);
+            return true;
+        } else if (p.proposalType == ChamaStructs.ProposalType.RemoveAdmin) {
+            require(p.target != creator, "Cannot remove creator");
+            require(admins[p.target], "Not an admin");
+            admins[p.target] = false;
+            emit AdminRemoved(p.target);
+            return true;
+        } else if (p.proposalType == ChamaStructs.ProposalType.KickMember) {
+            require(members[p.target].exists && members[p.target].isActive, "Invalid member");
+            members[p.target].isActive = false;
+            activeMemberCount--;
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -275,7 +578,6 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
     function _cancelPunishmentInternal(address user) internal {
         require(punishments[user].isActive, "No active punishment");
         
-        // Reactivate member if they were banned
         if (punishments[user].action == ChamaStructs.PunishmentAction.Ban) {
             members[user].isActive = true;
             activeMemberCount++;
@@ -296,61 +598,7 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
     }
 
     /**
-     * @dev Propose to cancel punishment
-     */
-    function proposeCancelPunishment(address user) external onlyActiveMember returns (uint256) {
-        require(punishments[user].isActive, "No active punishment to cancel");
-
-        proposalCounter++;
-        Proposal storage p = proposals[proposalCounter];
-        p.proposalType = ChamaStructs.ProposalType.CancelPunishment;
-        p.target = user;
-        p.createdAt = block.timestamp;
-
-        return proposalCounter;
-    }
-
-    /**
-     * @dev Vote on proposal
-     */
-    function voteOnProposal(uint256 proposalId, bool support) external onlyActiveMember {
-        Proposal storage p = proposals[proposalId];
-        require(!p.executed, "Already executed");
-        require(block.timestamp <= p.createdAt + proposalDuration, "Voting period over");
-        require(!p.hasVoted[msg.sender], "Already voted");
-
-        p.hasVoted[msg.sender] = true;
-
-        if (support) {
-            p.votesFor++;
-        } else {
-            p.votesAgainst++;
-        }
-    }
-
-    /**
-     * @dev Execute proposal
-     */
-    function executeProposal(uint256 proposalId) external onlyAdmin {
-        Proposal storage p = proposals[proposalId];
-        require(!p.executed, "Already executed");
-        require(block.timestamp > p.createdAt + proposalDuration, "Voting still active");
-        
-        uint256 totalVotes = p.votesFor + p.votesAgainst;
-        uint256 activeMembers = getActiveMemberCount();
-        
-        require(totalVotes >= (activeMembers * MIN_VOTING_QUORUM) / 100, "Insufficient participation");
-        require(p.votesFor > p.votesAgainst, "Proposal rejected");
-        
-        if (p.proposalType == ChamaStructs.ProposalType.CancelPunishment) {
-            _cancelPunishmentInternal(p.target);
-        }
-        
-        p.executed = true;
-    }
-
-    /**
-     * @dev Manually punish member (admin only)
+     * @dev Manual punishment (admin only)
      */
     function punishMember(
         address user,
@@ -382,26 +630,31 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
     }
 
     /**
-     * @dev Emergency withdraw (admin only)
+     * @dev Emergency withdraw with token support
      */
     function triggerEmergencyWithdraw() external onlyAdmin nonReentrant {
         require(rules.emergencyWithdrawAllowed, "Emergency withdraw not allowed");
-        require(address(this).balance > 0, "No funds to withdraw");
-
-        uint256 amount = address(this).balance;
+        
+        uint256 amount;
+        if (isTokenBased) {
+            amount = contributionToken.balanceOf(address(this));
+            require(amount > 0, "No tokens to withdraw");
+            contributionToken.safeTransfer(msg.sender, amount);
+        } else {
+            amount = address(this).balance;
+            require(amount > 0, "No funds to withdraw");
+            (bool success, ) = payable(msg.sender).call{value: amount}("");
+            require(success, "Transfer failed");
+        }
+        
         totalFunds = 0;
-        
-        (bool success, ) = payable(msg.sender).call{value: amount}("");
-        require(success, "Transfer failed");
-        
         emit EmergencyWithdrawTriggered(msg.sender, amount);
     }
 
     /**
      * @dev Add admin (creator only)
      */
-    function addAdmin(address newAdmin) external {
-        require(msg.sender == creator, "Only creator can add admins");
+    function addAdmin(address newAdmin) external onlyCreator {
         require(!admins[newAdmin], "Already an admin");
         
         admins[newAdmin] = true;
@@ -411,49 +664,15 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
     /**
      * @dev Remove admin (creator only)
      */
-    function removeAdmin(address admin) external {
-        require(msg.sender == creator, "Only creator can remove admins");
+    function removeAdmin(address admin) external onlyCreator {
         require(admin != creator, "Cannot remove creator");
         require(admins[admin], "Not an admin");
         
         admins[admin] = false;
         emit AdminRemoved(admin);
     }
-    
 
-    /**
-     * @dev Process rotation payout
-     */
-
-    function processRotationPayout() external onlyAdmin onlyActiveGroup nonReentrant {
-        uint256 period = getCurrentPeriod();
-        require(payoutHistory[period] == address(0), "Already paid this period");
-
-        // Check all active members contributed this period
-        for (uint i = 0; i < payoutQueue.length; i++) {
-            address member = payoutQueue[i];
-            if (members[member].isActive && !punishments[member].isActive) {
-                require(contributions[member][period], "Member not contributed yet");
-            }
-        }
-
-        address recipient = payoutQueue[period % payoutQueue.length];
-
-        // Skip if banned or has unpaid fine
-        while (!members[recipient].isActive || punishments[recipient].isActive) {
-            period++;
-            recipient = payoutQueue[period % payoutQueue.length];
-        }
-
-        payoutHistory[period] = recipient;
-
-        uint256 payoutAmount = rules.contributionAmount * activeMemberCount;
-
-        totalFunds -= payoutAmount;
-
-        (bool success, ) = payable(recipient).call{value: payoutAmount}("");
-        require(success, "Payout failed");
-    }
+    // VIEW FUNCTIONS
 
     /**
      * @dev Get current period
@@ -466,16 +685,55 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
     }
 
     /**
-     * @dev Get member contribution status for period
+     * @dev Get member contribution timestamp for period
      */
-    function getMemberContributionStatus(address user, uint256 period) external view returns (bool) {
-        return contributions[user][period];
+    function getMemberContributionTimestamp(address user, uint256 period) external view returns (uint256) {
+        return contributionTimestamps[user][period];
     }
 
     /**
-     * @dev Get contract balance
+     * @dev Get member payout history
+     */
+    function getMemberPayoutHistory(address user) external view returns (uint256[] memory) {
+        return memberPayoutPeriods[user];
+    }
+
+    /**
+     * @dev Get payout info for period
+     */
+    function getPayoutInfo(uint256 period) external view returns (
+        address recipient,
+        uint256 amount,
+        uint256 timestamp,
+        bool wasSkipped
+    ) {
+        PayoutInfo memory info = payoutHistory[period];
+        return (info.recipient, info.amount, info.timestamp, info.wasSkipped);
+    }
+
+    /**
+     * @dev Check if contribution window is open for current period
+     */
+    function isContributionWindowOpen() external view returns (bool) {
+        uint256 period = getCurrentPeriod();
+        uint256 periodStart = rules.startDate + (period * PERIOD_DURATION);
+        return block.timestamp <= periodStart + contributionWindow + gracePeriod;
+    }
+
+    /**
+     * @dev Get active member count
+     */
+    function getActiveMemberCount() public view returns (uint256) {
+        return activeMemberCount;
+    }
+
+    /**
+     * @dev Get contract balance (native or token)
      */
     function getBalance() external view returns (uint256) {
+        if (isTokenBased) {
+            return contributionToken.balanceOf(address(this));
+        }
         return address(this).balance;
     }
 
@@ -487,7 +745,8 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
         bool active,
         uint256 joinedAt,
         uint256 totalContributed,
-        uint256 missedContributions
+        uint256 missedContributions,
+        uint256 consecutiveFines
     ) {
         ChamaStructs.Member memory member = members[user];
         return (
@@ -495,7 +754,8 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
             member.isActive,
             member.joinedAt,
             member.totalContributed,
-            member.missedContributions
+            member.missedContributions,
+            member.consecutiveFines
         );
     }
 
@@ -517,6 +777,40 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
             punishment.issuedAt,
             punishment.fineAmount
         );
+    }
+
+    /**
+     * @dev Get proposal details
+     */
+    function getProposalDetails(uint256 proposalId) external view returns (
+        ChamaStructs.ProposalType proposalType,
+        address target,
+        uint256 value,
+        string memory description,
+        uint256 votesFor,
+        uint256 votesAgainst,
+        uint256 createdAt,
+        bool executed
+    ) {
+        Proposal storage p = proposals[proposalId];
+        return (
+            p.proposalType,
+            p.target,
+            p.value,
+            p.description,
+            p.votesFor,
+            p.votesAgainst,
+            p.createdAt,
+            p.executed
+        );
+    }
+
+    /**
+     * @dev Check if address has voted on proposal
+     * FIXED: Updated to use external mapping
+     */
+    function hasVotedOnProposal(uint256 proposalId, address voter) external view returns (bool) {
+        return proposalVotes[proposalId][voter];
     }
 
     /**
