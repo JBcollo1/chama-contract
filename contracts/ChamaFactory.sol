@@ -61,7 +61,10 @@ contract ChamaFactory is Ownable, Pausable {
             config.punishmentMode,
             config.approvalRequired,
             config.emergencyWithdrawAllowed,
-            msg.sender
+            msg.sender,
+            config.contributionToken,
+            config.gracePeriod,
+            config.contributionWindow
         );
 
         address groupAddress = address(newGroup);

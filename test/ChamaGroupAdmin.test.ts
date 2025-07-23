@@ -91,6 +91,7 @@ describe("ChamaGroup - Contributions", function () {
         })
       ).to.be.rejectedWith("Already contributed this period");
     });
+    
 
     it("Should allow contributions in different periods", async function () {
       const { group, user2, publicClient, groupConfig } = await loadFixture(setupGroupWithMembers);

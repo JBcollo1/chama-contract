@@ -150,6 +150,16 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
 
         creator = _creator;
         admins[_creator] = true;
+        members[_creator] = Member({
+            exists: true,
+            isBanned: false,
+            joinedAt: block.timestamp,
+            totalContributed: 0,
+            lastContribution: 0
+        });
+        memberAddresses.push(_creator);
+        memberCount++;
+
         isActive = true;
         currentPeriod = 0;
 
