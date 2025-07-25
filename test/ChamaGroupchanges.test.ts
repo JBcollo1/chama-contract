@@ -12,6 +12,10 @@ import {
   DEFAULT_CONTRIBUTION,
   FINE_AMOUNT,
 } from "./fixtures/chamaFixtures";
+import chai from "chai";
+import chaiBigint from "chai-bigint";
+
+chai.use(chaiBigint);
 
 describe("Enhanced ChamaGroup Features", function () {
   
@@ -196,9 +200,9 @@ describe("Enhanced ChamaGroup Features", function () {
       await group.write.processRotationPayout({ account: user1.account });
 
       // user1 tries to leave after receiving payout
-      const initialBalance = await hre.viem.getPublicClient().getBalance({ address: user1.account.address });
+      const initialBalance = await (await hre.viem.getPublicClient()).getBalance({ address: user1.account.address });
       await group.write.leaveGroup({ account: user1.account });
-      const finalBalance = await hre.viem.getPublicClient().getBalance({ address: user1.account.address });
+      const finalBalance = await (await hre.viem.getPublicClient()).getBalance({ address: user1.account.address });
 
       // Should get no refund (only gas cost difference)
       expect(finalBalance).to.be.lessThan(initialBalance);
