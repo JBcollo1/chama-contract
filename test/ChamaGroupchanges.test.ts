@@ -120,7 +120,8 @@ describe("Enhanced ChamaGroup Features", function () {
       await group.write.contribute({ account: user1.account, value: groupConfig.contributionAmount });
 
       const timestamp = await group.read.getMemberContributionTimestamp([user1.account.address, 0n]);
-      expect(timestamp).to.be.greaterThan(0n);
+      expect(timestamp > 0n).to.be.true;
+
     });
   });
 
@@ -169,14 +170,15 @@ describe("Enhanced ChamaGroup Features", function () {
       // Contribute
       await group.write.contribute({ account: user2.account, value: groupConfig.contributionAmount });
 
-      const initialBalance = await hre.viem.getPublicClient().getBalance({ address: user2.account.address });
+      const initialBalance = await (await hre.viem.getPublicClient()).getBalance({ address: user2.account.address });
+
 
       // Leave group
       const hash = await group.write.leaveGroup({ account: user2.account });
-      const receipt = await hre.viem.getPublicClient().waitForTransactionReceipt({ hash });
+      const receipt = await (await hre.viem.getPublicClient()).waitForTransactionReceipt({ hash });
 
-      const finalBalance = await hre.viem.getPublicClient().getBalance({ address: user2.account.address });
-      
+      const finalBalance = await (await hre.viem.getPublicClient()).getBalance({ address: user2.account.address });
+
       // Should get refund (minus gas costs)
       expect(finalBalance).to.be.greaterThan(initialBalance - parseEther("0.01")); // Accounting for gas
 
