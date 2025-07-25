@@ -15,13 +15,14 @@ describe("ChamaGroup - Contributions", function () {
       });
       await publicClient.waitForTransactionReceipt({ hash });
 
-      const member = await group.read.getMemberDetails([user2.account.address]) as [
-        boolean,
-        boolean,
-        bigint,
-        bigint,
-        bigint
-        ];
+     const member = await group.read.getMemberDetails([user2.account.address]) as [
+      boolean, // exists
+      boolean, // isActive
+      bigint,  // joinedAt
+      bigint,  // totalContributed
+      bigint,  // missedContributions
+      bigint   // consecutiveFines
+    ];
       expect(member[3]).to.equal(groupConfig.contributionAmount); // totalContributed
 
       expect(await group.read.totalFunds()).to.equal(groupConfig.contributionAmount);
@@ -114,11 +115,12 @@ describe("ChamaGroup - Contributions", function () {
       await publicClient.waitForTransactionReceipt({ hash: hash2 });
 
       const member = await group.read.getMemberDetails([user2.account.address]) as [
-        boolean,
-        boolean,
-        bigint,
-        bigint,
-        bigint
+          boolean, // exists
+          boolean, // isActive
+          bigint,  // joinedAt
+          bigint,  // totalContributed
+          bigint,  // missedContributions
+          bigint   // consecutiveFines
         ];
       expect(member[3]).to.equal(groupConfig.contributionAmount * 2n); // totalContributed
     });
