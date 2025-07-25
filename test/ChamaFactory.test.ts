@@ -35,17 +35,22 @@ describe("ChamaFactory", function () {
       const { factory, user1, publicClient } = await loadFixture(deployFactoryFixture);
 
       const currentTime = BigInt(await time.latest());
-      const groupConfig = {
-        name: "Test Group",
-        contributionAmount: DEFAULT_CONTRIBUTION,
-        maxMembers: 5n,
-        startDate: currentTime + BigInt(ONE_WEEK_IN_SECS),
-        endDate: currentTime + BigInt(ONE_MONTH_IN_SECS * 3),
-        contributionFrequency: "weekly",
-        punishmentMode: 1,
-        approvalRequired: false,
-        emergencyWithdrawAllowed: true,
-      };
+    const groupConfig = {
+    name: "Test Group",
+    contributionAmount: DEFAULT_CONTRIBUTION,
+    maxMembers: 5n,
+    startDate: currentTime + BigInt(ONE_WEEK_IN_SECS),
+    endDate: currentTime + BigInt(ONE_MONTH_IN_SECS * 3),
+    contributionFrequency: "weekly",
+    punishmentMode: 1, // e.g. PunishmentAction.Fine
+    approvalRequired: false,
+    emergencyWithdrawAllowed: true,
+    creator: user1.account.address as `0x${string}`,
+    contributionToken: "0x0000000000000000000000000000000000000000", // use zero address for native
+    gracePeriod: 86400n, // 1 day
+    contributionWindow: 3600n, // 1 hour
+  };
+
 
       const hash = await factory.write.createGroup([groupConfig], {
         account: user1.account,
