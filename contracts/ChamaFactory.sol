@@ -66,6 +66,7 @@ contract ChamaFactory is Ownable, Pausable {
             config.gracePeriod,
             config.contributionWindow
         );
+        
 
         address groupAddress = address(newGroup);
         creatorGroups[msg.sender].push(groupAddress);

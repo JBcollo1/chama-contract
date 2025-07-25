@@ -49,7 +49,13 @@ library ChamaStructs {
         PunishmentAction punishmentMode;
         bool approvalRequired;
         bool emergencyWithdrawAllowed;
+        address creator;
+        address contributionToken; 
+        uint256 gracePeriod;
+        uint256 contributionWindow;
     }
+
+
     enum ProposalType {
         None,
         CancelPunishment,
