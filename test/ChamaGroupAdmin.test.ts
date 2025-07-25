@@ -136,13 +136,13 @@ describe("ChamaGroup - Contributions", function () {
       await publicClient.waitForTransactionReceipt({ hash: hash1 });
 
       // Check contribution status for period 0
-      expect(await group.read.getMemberContributionStatus([user2.account.address, 0n])).to.be.true;
+      expect(await group.read.getMemberContributionTimestamp([user2.account.address, 0n])).to.be.true;
 
       // Move to period 1
       await time.increase(ONE_WEEK_IN_SECS);
 
       // Check contribution status for period 1 (should be false)
-      expect(await group.read.getMemberContributionStatus([user2.account.address, 1n])).to.be.false;
+      expect(await group.read.getMemberContributionTimestamp([user2.account.address, 1n])).to.be.false;
 
       // Contribute in period 1
       const hash2 = await group.write.contribute( {
@@ -152,7 +152,7 @@ describe("ChamaGroup - Contributions", function () {
       await publicClient.waitForTransactionReceipt({ hash: hash2 });
 
       // Check contribution status for period 1 (should be true)
-      expect(await group.read.getMemberContributionStatus([user2.account.address, 1n])).to.be.true;
+      expect(await group.read.getMemberContributionTimestamp([user2.account.address, 1n])).to.be.true;
     });
   });
 
@@ -177,18 +177,20 @@ describe("ChamaGroup - Contributions", function () {
 
       // Check individual member contributions
       const member2 = await group.read.getMemberDetails([user2.account.address]) as [
-        boolean,
-        boolean,
-        bigint,
-        bigint,
-        bigint
+         boolean, // exists
+          boolean, // isActive
+          bigint,  // joinedAt
+          bigint,  // totalContributed
+          bigint,  // missedContributions
+          bigint   // consecutiveFines
         ];
       const member3 = await group.read.getMemberDetails([user3.account.address])as [
-        boolean,
-        boolean,
-        bigint,
-        bigint,
-        bigint
+          boolean, 
+          boolean, 
+          bigint,  
+          bigint,  
+          bigint,  
+          bigint   
         ];
       
       expect(member2[3]).to.equal(groupConfig.contributionAmount); // totalContributed
@@ -223,25 +225,27 @@ describe("ChamaGroup - Contributions", function () {
       await publicClient.waitForTransactionReceipt({ hash: hash3 });
 
       // Check contribution statuses
-      expect(await group.read.getMemberContributionStatus([user2.account.address, 0n])).to.be.true;
-      expect(await group.read.getMemberContributionStatus([user3.account.address, 0n])).to.be.false;
-      expect(await group.read.getMemberContributionStatus([user2.account.address, 1n])).to.be.true;
-      expect(await group.read.getMemberContributionStatus([user3.account.address, 1n])).to.be.true;
+      expect(await group.read.getMemberContributionTimestamp([user2.account.address, 0n])).to.be.true;
+      expect(await group.read.getMemberContributionTimestamp([user3.account.address, 0n])).to.be.false;
+      expect(await group.read.getMemberContributionTimestamp([user2.account.address, 1n])).to.be.true;
+      expect(await group.read.getMemberContributionTimestamp([user3.account.address, 1n])).to.be.true;
 
       // Check total contributions
       const member2 = await group.read.getMemberDetails([user2.account.address]) as [
-        boolean,
-        boolean,
-        bigint,
-        bigint,
-        bigint
+          boolean, 
+          boolean, 
+          bigint,  
+          bigint,  
+          bigint,  
+          bigint   
         ];
       const member3 = await group.read.getMemberDetails([user3.account.address]) as [
-        boolean,
-        boolean,
-        bigint,
-        bigint,
-        bigint
+          boolean, 
+          boolean, 
+          bigint,  
+          bigint,  
+          bigint,  
+          bigint   
         ];
       
       expect(member2[3]).to.equal(groupConfig.contributionAmount * 2n); // totalContributed
@@ -282,27 +286,29 @@ describe("ChamaGroup - Contributions", function () {
       });
 
       // Verify contribution patterns
-      expect(await group.read.getMemberContributionStatus([user2.account.address, 0n])).to.be.true;
-      expect(await group.read.getMemberContributionStatus([user3.account.address, 0n])).to.be.true;
-      expect(await group.read.getMemberContributionStatus([user2.account.address, 1n])).to.be.true;
-      expect(await group.read.getMemberContributionStatus([user3.account.address, 1n])).to.be.false;
-      expect(await group.read.getMemberContributionStatus([user2.account.address, 2n])).to.be.false;
-      expect(await group.read.getMemberContributionStatus([user3.account.address, 2n])).to.be.true;
+      expect(await group.read.getMemberContributionTimestamp([user2.account.address, 0n])).to.be.true;
+      expect(await group.read.getMemberContributionTimestamp([user3.account.address, 0n])).to.be.true;
+      expect(await group.read.getMemberContributionTimestamp([user2.account.address, 1n])).to.be.true;
+      expect(await group.read.getMemberContributionTimestamp([user3.account.address, 1n])).to.be.false;
+      expect(await group.read.getMemberContributionTimestamp([user2.account.address, 2n])).to.be.false;
+      expect(await group.read.getMemberContributionTimestamp([user3.account.address, 2n])).to.be.true;
 
       // Check final totals
       const member2 = await group.read.getMemberDetails([user2.account.address]) as [
-        boolean,
-        boolean,
-        bigint,
-        bigint,
-        bigint
+          boolean, 
+          boolean, 
+          bigint,  
+          bigint,  
+          bigint,  
+          bigint   
         ];
       const member3 = await group.read.getMemberDetails([user3.account.address]) as [
-        boolean,
-        boolean,
-        bigint,
-        bigint,
-        bigint
+          boolean, 
+          boolean, 
+          bigint,  
+          bigint,  
+          bigint,  
+          bigint   
         ];
             
       expect(member2[3]).to.equal(groupConfig.contributionAmount * 2n); // totalContributed
@@ -332,8 +338,8 @@ describe("ChamaGroup - Contributions", function () {
       });
 
       expect(await group.read.getCurrentPeriod()).to.equal(1n);
-      expect(await group.read.getMemberContributionStatus([user2.account.address, 0n])).to.be.true;
-      expect(await group.read.getMemberContributionStatus([user2.account.address, 1n])).to.be.true;
+      expect(await group.read.getMemberContributionTimestamp([user2.account.address, 0n])).to.be.true;
+      expect(await group.read.getMemberContributionTimestamp([user2.account.address, 1n])).to.be.true;
     });
 
     it("Should reject contributions after group end date", async function () {
