@@ -21,7 +21,7 @@ describe("ChamaGroup - Member Management", function () {
       const hash = await group.write.joinGroup( { account: user2.account  });
       await publicClient.waitForTransactionReceipt({ hash });
 
-      expect(await group.read.memberCount()).to.equal(1n);
+      expect(await group.read.memberCount()).to.equal(2n);
       const member = await group.read.getMemberDetails([user2.account.address]) as [  boolean, 
           boolean, 
           bigint,  

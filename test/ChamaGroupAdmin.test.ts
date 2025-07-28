@@ -6,7 +6,7 @@ import { setupGroupWithMembers, ONE_WEEK_IN_SECS } from "./fixtures/chamaFixture
 describe("ChamaGroup - Contributions", function () {
   describe("Basic Contributions", function () {
     it("Should allow members to contribute correct amount", async function () {
-      const { group, user2, publicClient, groupConfig } = await setupGroupWithMembers();
+      const { group, user2, publicClient, groupConfig } = await loadFixture(setupGroupWithMembers);
       
 
       const hash = await group.write.contribute( {
@@ -29,7 +29,7 @@ describe("ChamaGroup - Contributions", function () {
     });
 
     it("Should emit ContributionMade event", async function () {
-      const { group, user2, publicClient, groupConfig } = await setupGroupWithMembers();
+      const { group, user2, publicClient, groupConfig } = await loadFixture(setupGroupWithMembers);
      
       const hash = await group.write.contribute( {
         account: user2.account,
@@ -44,7 +44,7 @@ describe("ChamaGroup - Contributions", function () {
     });
 
     it("Should reject incorrect contribution amounts", async function () {
-      const { group, user2, groupConfig } = await setupGroupWithMembers();
+      const { group, user2, groupConfig } = await loadFixture(setupGroupWithMembers);
 
       await expect(
         group.write.contribute( {
@@ -62,7 +62,7 @@ describe("ChamaGroup - Contributions", function () {
     });
 
     it("Should reject contributions from non-members", async function () {
-      const { group, user6, groupConfig } = await setupGroupWithMembers();
+      const { group, user6, groupConfig } = await loadFixture(setupGroupWithMembers);
 
       await expect(
         group.write.contribute({
@@ -75,7 +75,7 @@ describe("ChamaGroup - Contributions", function () {
 
   describe("Contribution Periods", function () {
     it("Should reject duplicate contributions in same period", async function () {
-      const { group, user2, publicClient, groupConfig } = await setupGroupWithMembers();
+      const { group, user2, publicClient, groupConfig } = await loadFixture(setupGroupWithMembers);
 
       // First contribution
       const hash1 = await group.write.contribute( {
@@ -95,7 +95,7 @@ describe("ChamaGroup - Contributions", function () {
     
 
     it("Should allow contributions in different periods", async function () {
-      const { group, user2, publicClient, groupConfig } = await setupGroupWithMembers();
+      const { group, user2, publicClient, groupConfig } = await loadFixture(setupGroupWithMembers);
 
       // First contribution
       const hash1 = await group.write.contribute( {
@@ -126,34 +126,38 @@ describe("ChamaGroup - Contributions", function () {
     });
 
     it("Should track contributions per period correctly", async function () {
-      const { group, user2, publicClient, groupConfig } = await loadFixture(setupGroupWithMembers);
+      const { group, user2, publicClient, groupConfig } = await setupGroupWithMembers();
 
       // Contribute in period 0
-      const hash1 = await group.write.contribute( {
+      const hash1 = await group.write.contribute({
         account: user2.account,
         value: groupConfig.contributionAmount
       });
       await publicClient.waitForTransactionReceipt({ hash: hash1 });
 
-      // Check contribution status for period 0
-      expect(await group.read.getMemberContributionTimestamp([user2.account.address, 0n])).to.be.true;
+      // Check contribution timestamp for period 0 (should not be 0)
+      const ts0 = await group.read.getMemberContributionTimestamp([user2.account.address, 0n]);
+      expect(ts0).to.not.equal(0n);
 
       // Move to period 1
       await time.increase(ONE_WEEK_IN_SECS);
 
-      // Check contribution status for period 1 (should be false)
-      expect(await group.read.getMemberContributionTimestamp([user2.account.address, 1n])).to.be.false;
+      // Before contributing in period 1, should be 0
+      const ts1Before = await group.read.getMemberContributionTimestamp([user2.account.address, 1n]);
+      expect(ts1Before).to.equal(0n);
 
       // Contribute in period 1
-      const hash2 = await group.write.contribute( {
+      const hash2 = await group.write.contribute({
         account: user2.account,
         value: groupConfig.contributionAmount
       });
       await publicClient.waitForTransactionReceipt({ hash: hash2 });
 
-      // Check contribution status for period 1 (should be true)
-      expect(await group.read.getMemberContributionTimestamp([user2.account.address, 1n])).to.be.true;
+      // After contributing, should not be 0
+      const ts1After = await group.read.getMemberContributionTimestamp([user2.account.address, 1n]);
+      expect(ts1After).to.not.equal(0n);
     });
+
   });
 
   describe("Multiple Members Contributions", function () {
@@ -225,10 +229,22 @@ describe("ChamaGroup - Contributions", function () {
       await publicClient.waitForTransactionReceipt({ hash: hash3 });
 
       // Check contribution statuses
-      expect(await group.read.getMemberContributionTimestamp([user2.account.address, 0n])).to.be.true;
-      expect(await group.read.getMemberContributionTimestamp([user3.account.address, 0n])).to.be.false;
-      expect(await group.read.getMemberContributionTimestamp([user2.account.address, 1n])).to.be.true;
-      expect(await group.read.getMemberContributionTimestamp([user3.account.address, 1n])).to.be.true;
+          // user2 contributed in period 0 → timestamp should be non-zero
+    const ts2p0 = await group.read.getMemberContributionTimestamp([user2.account.address, 0n]);
+    expect(ts2p0).to.not.equal(0n);
+
+    // user3 did NOT contribute in period 0 → timestamp should be zero
+    const ts3p0 = await group.read.getMemberContributionTimestamp([user3.account.address, 0n]);
+    expect(ts3p0).to.equal(0n);
+
+    // user2 contributed in period 1 → timestamp should be non-zero
+    const ts2p1 = await group.read.getMemberContributionTimestamp([user2.account.address, 1n]);
+    expect(ts2p1).to.not.equal(0n);
+
+    // user3 contributed in period 1 → timestamp should be non-zero
+    const ts3p1 = await group.read.getMemberContributionTimestamp([user3.account.address, 1n]);
+    expect(ts3p1).to.not.equal(0n);
+
 
       // Check total contributions
       const member2 = await group.read.getMemberDetails([user2.account.address]) as [
