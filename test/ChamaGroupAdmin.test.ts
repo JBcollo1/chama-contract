@@ -302,12 +302,27 @@ describe("ChamaGroup - Contributions", function () {
       });
 
       // Verify contribution patterns
-      expect(await group.read.getMemberContributionTimestamp([user2.account.address, 0n])).to.be.true;
-      expect(await group.read.getMemberContributionTimestamp([user3.account.address, 0n])).to.be.true;
-      expect(await group.read.getMemberContributionTimestamp([user2.account.address, 1n])).to.be.true;
-      expect(await group.read.getMemberContributionTimestamp([user3.account.address, 1n])).to.be.false;
-      expect(await group.read.getMemberContributionTimestamp([user2.account.address, 2n])).to.be.false;
-      expect(await group.read.getMemberContributionTimestamp([user3.account.address, 2n])).to.be.true;
+      // Period 0
+    const ts2p0 = await group.read.getMemberContributionTimestamp([user2.account.address, 0n]);
+    expect(ts2p0).to.not.equal(0n); // user2 contributed in period 0
+
+    const ts3p0 = await group.read.getMemberContributionTimestamp([user3.account.address, 0n]);
+    expect(ts3p0).to.not.equal(0n); // user3 contributed in period 0
+
+    // Period 1
+    const ts2p1 = await group.read.getMemberContributionTimestamp([user2.account.address, 1n]);
+    expect(ts2p1).to.not.equal(0n); // user2 contributed in period 1
+
+    const ts3p1 = await group.read.getMemberContributionTimestamp([user3.account.address, 1n]);
+    expect(ts3p1).to.equal(0n); // user3 did NOT contribute in period 1
+
+    // Period 2
+    const ts2p2 = await group.read.getMemberContributionTimestamp([user2.account.address, 2n]);
+    expect(ts2p2).to.equal(0n); // user2 did NOT contribute in period 2
+
+    const ts3p2 = await group.read.getMemberContributionTimestamp([user3.account.address, 2n]);
+    expect(ts3p2).to.not.equal(0n); // user3 contributed in period 2
+
 
       // Check final totals
       const member2 = await group.read.getMemberDetails([user2.account.address]) as [
@@ -354,8 +369,12 @@ describe("ChamaGroup - Contributions", function () {
       });
 
       expect(await group.read.getCurrentPeriod()).to.equal(1n);
-      expect(await group.read.getMemberContributionTimestamp([user2.account.address, 0n])).to.be.true;
-      expect(await group.read.getMemberContributionTimestamp([user2.account.address, 1n])).to.be.true;
+      const ts2p0 = await group.read.getMemberContributionTimestamp([user2.account.address, 0n]);
+      expect(ts2p0).to.not.equal(0n); // user2 contributed in period 0
+
+      const ts2p1 = await group.read.getMemberContributionTimestamp([user2.account.address, 1n]);
+      expect(ts2p1).to.not.equal(0n); // user2 contributed in period 1
+
     });
 
     it("Should reject contributions after group end date", async function () {
