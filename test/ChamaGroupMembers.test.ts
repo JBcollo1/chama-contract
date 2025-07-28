@@ -22,11 +22,12 @@ describe("ChamaGroup - Member Management", function () {
       await publicClient.waitForTransactionReceipt({ hash });
 
       expect(await group.read.memberCount()).to.equal(1n);
-      const member = await group.read.getMemberDetails([user2.account.address]) as [ boolean, 
-        boolean, 
-        bigint,  
-        bigint,
-        bigint   
+      const member = await group.read.getMemberDetails([user2.account.address]) as [  boolean, 
+          boolean, 
+          bigint,  
+          bigint,  
+          bigint,  
+          bigint   
         ];
       expect(member[0]).to.be.true; // exists
       expect(member[1]).to.be.true; // isActive
@@ -81,6 +82,11 @@ describe("ChamaGroup - Member Management", function () {
         punishmentMode: 0,
         approvalRequired: false,
         emergencyWithdrawAllowed: false,
+        creator: user1.account.address as `0x${string}`,
+        contributionToken: "0x0000000000000000000000000000000000000000" as `0x${string}`, // use zero address for native
+        gracePeriod: 86400n, // 1 day
+        contributionWindow: 3600n, // 1 hour
+
       };
 
       const hash = await factory.write.createGroup([groupConfig], {
@@ -125,6 +131,12 @@ describe("ChamaGroup - Member Management", function () {
         punishmentMode: 0,
         approvalRequired: true,
         emergencyWithdrawAllowed: false,
+          
+        creator: user1.account.address as `0x${string}`,
+        contributionToken: "0x0000000000000000000000000000000000000000" as `0x${string}`, // use zero address for native
+        gracePeriod: 86400n, // 1 day
+        contributionWindow: 3600n, // 1 hour
+          
       };
 
       const hash = await factory.write.createGroup([groupConfig], {

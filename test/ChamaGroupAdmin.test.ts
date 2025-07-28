@@ -6,7 +6,7 @@ import { setupGroupWithMembers, ONE_WEEK_IN_SECS } from "./fixtures/chamaFixture
 describe("ChamaGroup - Contributions", function () {
   describe("Basic Contributions", function () {
     it("Should allow members to contribute correct amount", async function () {
-      const { group, user2, publicClient, groupConfig } = await loadFixture(setupGroupWithMembers);
+      const { group, user2, publicClient, groupConfig } = await setupGroupWithMembers();
       
 
       const hash = await group.write.contribute( {
@@ -29,7 +29,7 @@ describe("ChamaGroup - Contributions", function () {
     });
 
     it("Should emit ContributionMade event", async function () {
-      const { group, user2, publicClient, groupConfig } = await loadFixture(setupGroupWithMembers);
+      const { group, user2, publicClient, groupConfig } = await setupGroupWithMembers();
      
       const hash = await group.write.contribute( {
         account: user2.account,
@@ -44,7 +44,7 @@ describe("ChamaGroup - Contributions", function () {
     });
 
     it("Should reject incorrect contribution amounts", async function () {
-      const { group, user2, groupConfig } = await loadFixture(setupGroupWithMembers);
+      const { group, user2, groupConfig } = await setupGroupWithMembers();
 
       await expect(
         group.write.contribute( {
@@ -62,7 +62,7 @@ describe("ChamaGroup - Contributions", function () {
     });
 
     it("Should reject contributions from non-members", async function () {
-      const { group, user6, groupConfig } = await loadFixture(setupGroupWithMembers);
+      const { group, user6, groupConfig } = await setupGroupWithMembers();
 
       await expect(
         group.write.contribute({
@@ -75,7 +75,7 @@ describe("ChamaGroup - Contributions", function () {
 
   describe("Contribution Periods", function () {
     it("Should reject duplicate contributions in same period", async function () {
-      const { group, user2, publicClient, groupConfig } = await loadFixture(setupGroupWithMembers);
+      const { group, user2, publicClient, groupConfig } = await setupGroupWithMembers();
 
       // First contribution
       const hash1 = await group.write.contribute( {
@@ -95,7 +95,7 @@ describe("ChamaGroup - Contributions", function () {
     
 
     it("Should allow contributions in different periods", async function () {
-      const { group, user2, publicClient, groupConfig } = await loadFixture(setupGroupWithMembers);
+      const { group, user2, publicClient, groupConfig } = await setupGroupWithMembers();
 
       // First contribution
       const hash1 = await group.write.contribute( {

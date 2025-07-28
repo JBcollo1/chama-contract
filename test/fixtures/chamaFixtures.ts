@@ -100,30 +100,46 @@ export async function deployGroupFixture() {
 
 export async function setupGroupWithMembers() {
   const fixture = await loadFixture(deployGroupFixture);
-  const { group, user1, user2, user3, user4, publicClient, startDate } = fixture;
+  const { group, user1, user2, user3,user4, publicClient, startDate } = fixture;
 
   await time.increaseTo(startDate);
 
-  const users = [user1, user2, user3, user4];
-  for (const user of users) {
-    const tx = await group.write.joinGroup({ account: user.account });
-    await publicClient.waitForTransactionReceipt({ hash: tx });
-  }
+  // Add members and wait for confirmations
+  const tx1 = await group.write.joinGroup({ account: user1.account });
+  await publicClient.waitForTransactionReceipt({ hash: tx1 });
 
-  return { ...fixture, members: users };
+  const tx2 = await group.write.joinGroup({ account: user2.account });
+  await publicClient.waitForTransactionReceipt({ hash: tx2 });
+
+  const tx3 = await group.write.joinGroup({ account: user3.account });
+  await publicClient.waitForTransactionReceipt({ hash: tx3 });
+
+  const tx4 = await group.write.joinGroup({ account: user4.account });
+  await publicClient.waitForTransactionReceipt({ hash: tx4 });
+
+  return { ...fixture, members: [user1, user2, user3,user4] };
 }
 
 export async function setupGroupWithContributions() {
   const fixture = await setupGroupWithMembers();
-  const { group, groupConfig, publicClient, members } = fixture;
+  const { group,user1, user2, user3, user4, publicClient, groupConfig } = fixture;
 
-  for (const user of members) {
-    const tx = await group.write.contribute({
-      account: user.account,
-      value: groupConfig.contributionAmount,
-    });
-    await publicClient.waitForTransactionReceipt({ hash: tx });
-  }
-
+  // Both members contribute in first period
+   await group.write.contribute( {
+    account: user1.account,
+    value: groupConfig.contributionAmount
+  });
+  await group.write.contribute( {
+    account: user2.account,
+    value: groupConfig.contributionAmount
+  });
+  await group.write.contribute( {
+    account: user3.account,
+    value: groupConfig.contributionAmount
+  });
+  await group.write.contribute( {
+    account: user4.account,
+    value: groupConfig.contributionAmount
+  });
   return fixture;
 }
