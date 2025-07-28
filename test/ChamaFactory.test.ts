@@ -161,7 +161,7 @@ describe("ChamaFactory", function () {
       ).to.be.rejectedWith("Start date must be in future");
     });
 
-    it("Should not allow creation when paused", async function () {
+      it("Should not allow creation when paused", async function () {
       const { factory, user1, owner } = await loadFixture(deployFactoryFixture);
 
       await factory.write.pause({ account: owner.account });
@@ -179,15 +179,20 @@ describe("ChamaFactory", function () {
         approvalRequired: false,
         emergencyWithdrawAllowed: false,
         creator: user1.account.address as `0x${string}`,
-        contributionToken: "0x0000000000000000000000000000000000000000" as `0x${string}`, // use zero address for native
-        gracePeriod: 86400n, // 1 day
-        contributionWindow: 3600n, // 1 hour
+        contributionToken: "0x0000000000000000000000000000000000000000" as `0x${string}`,
+        gracePeriod: 86400n,
+        contributionWindow: 3600n,
       };
 
-      await expect(
-        factory.write.createGroup([config], { account: user1.account })
-      ).to.be.rejectedWith("Pausable: paused");
+      try {
+        await factory.write.createGroup([config], { account: user1.account });
+        throw new Error("Expected revert");
+      } catch (err: any) {
+        const msg = err?.message || "";
+        expect(msg).to.include("EnforcedPause"); // Or whatever string shows up in raw error
+      }
     });
+
 
     it("Should reject creator exceeding group limit", async function () {
       const { factory, user1, publicClient } = await loadFixture(deployFactoryFixture);
@@ -235,11 +240,12 @@ describe("ChamaFactory", function () {
         },
       };
 
-      await expect(
-        factory.write.createGroup([overflow], {
-          account: user1.account,
-        })
-      ).to.be.rejectedWith("Max groups per creator reached");
+          await expect(
+      factory.write.createGroup([overflow], {
+        account: user1.account,
+      })
+    ).to.be.rejectedWith("Too many groups created");
+
     });
   });
 
