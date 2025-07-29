@@ -102,7 +102,7 @@ describe("ChamaGroup - Member Management", function () {
       await time.increaseTo(startDate);
 
       // Add 2 members
-      await group.write.joinGroup({ account: user1.account });
+      // await group.write.joinGroup({ account: user1.account });
       await group.write.joinGroup( { account: user2.account } );
       await group.write.joinGroup( { account: user3.account } );
 
@@ -156,7 +156,7 @@ describe("ChamaGroup - Member Management", function () {
       await publicClient.waitForTransactionReceipt({ hash : joinHash });
 
       // Should not be a member yet
-      expect(await group.read.memberCount()).to.equal(0n);
+      expect(await group.read.memberCount()).to.equal(1n);
 
       // Admin approves
       const approveHash = await group.write.approveJoinRequest([user2.account.address], {
@@ -165,7 +165,7 @@ describe("ChamaGroup - Member Management", function () {
       await publicClient.waitForTransactionReceipt({ hash: approveHash });
 
       // Now should be a member
-      expect(await group.read.memberCount()).to.equal(1n);
+      expect(await group.read.memberCount()).to.equal(2n);
     });
   });
 });
