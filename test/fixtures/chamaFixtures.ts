@@ -101,7 +101,7 @@ export async function deployGroupFixture() {
 
 export async function setupGroupWithMembers() {
   const fixture = await loadFixture(deployGroupFixture);
-  const { group, user1, user2, user3, user4, publicClient, startDate } = fixture;
+  const { group, user1, user2, user3, user4,user6, publicClient, startDate } = fixture;
 
   await time.increaseTo(startDate);
 
@@ -113,13 +113,15 @@ export async function setupGroupWithMembers() {
 
   const tx4 = await group.write.joinGroup({ account: user4.account });
   await publicClient.waitForTransactionReceipt({ hash: tx4 });
-
-  return { ...fixture, members: [user1, user2, user3, user4] };
+  
+  const tx6 = await group.write.joinGroup({ account: user6.account });
+  await publicClient.waitForTransactionReceipt({ hash: tx6 });
+  return { ...fixture, members: [user1, user2, user3, user4, user6] };
 }
 
 export async function setupGroupWithContributions() {
   const fixture = await setupGroupWithMembers();
-  const { group, user1, user2, user3, user4, publicClient, groupConfig } = fixture;
+  const { group, user1, user2, user3, user4, user6, publicClient, groupConfig } = fixture;
 
   await group.write.contribute({
     account: user1.account,
@@ -135,6 +137,10 @@ export async function setupGroupWithContributions() {
   });
   await group.write.contribute({
     account: user4.account,
+    value: groupConfig.contributionAmount
+  });
+  await group.write.contribute({
+    account: user6.account,
     value: groupConfig.contributionAmount
   });
   return fixture;

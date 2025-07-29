@@ -224,123 +224,120 @@ describe("ChamaGroup - Punishment System", function () {
       ).to.be.rejectedWith("Already voted");
     });
 
-    it("Should execute successful proposals with sufficient votes", async function () {
-      const { group, user1, user2, user3, user4, publicClient } = await loadFixture(setupGroupWithContributions);
+it("Should execute successful proposals with sufficient votes", async function () {
+  const { group, user1, user2, user3, user4, publicClient } = await loadFixture(setupGroupWithContributions);
 
-      // Punish member
-      const punishHash = await group.write.punishMember(
-        [user2.account.address, 3, "Ban test"], // Ban
-        { account: user1.account }
-      );
-      await publicClient.waitForTransactionReceipt({ hash: punishHash });
+  // Punish member
+  const punishHash = await group.write.punishMember(
+    [user2.account.address, 3, "Ban test"], // Ban
+    { account: user1.account }
+  );
+  await publicClient.waitForTransactionReceipt({ hash: punishHash });
 
-      // Verify member is banned
-      let member = await group.read.getMemberDetails([user2.account.address]) as [
-        boolean, boolean, bigint, bigint, bigint, bigint
-      ];
-      expect(member[1]).to.be.false; // isActive should be false
+  // Verify member is banned
+  let member = await group.read.getMemberDetails([user2.account.address]) as [
+    boolean, boolean, bigint, bigint, bigint, bigint
+  ];
+  expect(member[1]).to.be.false; // isActive should be false
 
-      // Create proposal
-      const proposeHash = await group.write.createProposal(
-        [0, user2.account.address, 0n, "Cancel ban for user2"],
-        { account: user3.account }
-      );
-      await publicClient.waitForTransactionReceipt({ hash: proposeHash });
+  // Create proposal
+  const proposeHash = await group.write.createProposal(
+    [0, user2.account.address, 0n, "Cancel ban for user2"],
+    { account: user3.account }
+  );
+  await publicClient.waitForTransactionReceipt({ hash: proposeHash });
 
-      const proposalId = 1n;
+  const proposalId = 1n;
 
-      // Get enough votes for proposal (majority of active members)
-      const voteHash1 = await group.write.voteOnProposal(
-        [proposalId, true],
-        { account: user3.account }
-      );
-      await publicClient.waitForTransactionReceipt({ hash: voteHash1 });
+  // Get enough votes for proposal - include user1 (admin) vote
+  const voteHash1 = await group.write.voteOnProposal(
+    [proposalId, true],
+    { account: user1.account } // Admin votes too
+  );
+  await publicClient.waitForTransactionReceipt({ hash: voteHash1 });
 
-      const voteHash2 = await group.write.voteOnProposal(
-        [proposalId, true],
-        { account: user4.account }
-      );
-      await publicClient.waitForTransactionReceipt({ hash: voteHash2 });
+  const voteHash2 = await group.write.voteOnProposal(
+    [proposalId, true],
+    { account: user3.account }
+  );
+  await publicClient.waitForTransactionReceipt({ hash: voteHash2 });
 
-      // Wait for voting period to end (3 days)
-      await (publicClient as any).request({
-        method: "evm_increaseTime",
-        params: [3 * 24 * 60 * 60 + 1], // 3 days and 1 second
-      });
+  const voteHash3 = await group.write.voteOnProposal(
+    [proposalId, true],
+    { account: user4.account }
+  );
+  await publicClient.waitForTransactionReceipt({ hash: voteHash3 });
 
-      await (publicClient as any).request({
-        method: "evm_mine",
-      });
+  // Wait for voting period to end (3 days)
+  await (publicClient as any).request({
+    method: "evm_increaseTime",
+    params: [3 * 24 * 60 * 60 + 1], // 3 days and 1 second
+  });
 
-      // Execute proposal
-      const executeHash = await group.write.executeProposal(
-        [proposalId],
-        { account: user1.account }
-      );
-      await publicClient.waitForTransactionReceipt({ hash: executeHash });
+  await (publicClient as any).request({
+    method: "evm_mine",
+  });
 
-      // Verify punishment is cancelled and member is reactivated
-      const punishment = await group.read.getPunishmentDetails([user2.account.address]) as [
-        number, string, boolean, bigint, bigint
-      ];
-      expect(punishment[2]).to.be.false; // isActive should be false
+  // Execute proposal
+  const executeHash = await group.write.executeProposal(
+    [proposalId],
+    { account: user1.account }
+  );
+  await publicClient.waitForTransactionReceipt({ hash: executeHash });
 
-      member = await group.read.getMemberDetails([user2.account.address]) as [
-        boolean, boolean, bigint, bigint, bigint, bigint
-      ];
-      expect(member[1]).to.be.true; // isActive should be true again
-    });
+  // Verify punishment is cancelled and member is reactivated
+  const punishment = await group.read.getPunishmentDetails([user2.account.address]) as [
+    number, string, boolean, bigint, bigint
+  ];
+  expect(punishment[2]).to.be.false; // isActive should be false
 
-    it("Should reject proposals with insufficient votes", async function () {
-      const { group, user1, user2, user3, user4, publicClient } = await loadFixture(setupGroupWithContributions);
+  member = await group.read.getMemberDetails([user2.account.address]) as [
+    boolean, boolean, bigint, bigint, bigint, bigint
+  ];
+  expect(member[1]).to.be.true; // isActive should be true again
+});
+it("Should reject proposals with insufficient votes", async function () {
+  const { group, user1, user2, user3, user4, user6, publicClient } = await loadFixture(setupGroupWithContributions);
 
-      // Punish member
-      const punishHash = await group.write.punishMember(
-        [user2.account.address, 2, "Test punishment"],
-        { account: user1.account }
-      );
-      await publicClient.waitForTransactionReceipt({ hash: punishHash });
+  // Punish member
+  const punishHash = await group.write.punishMember(
+    [user2.account.address, 2, "Test punishment"],
+    { account: user1.account }
+  );
+  await publicClient.waitForTransactionReceipt({ hash: punishHash });
 
-      // Create proposal
-      const proposeHash = await group.write.createProposal(
-        [0, user2.account.address, 0n, "Cancel punishment for user2"],
-        { account: user3.account }
-      );
-      await publicClient.waitForTransactionReceipt({ hash: proposeHash });
+  // Create proposal (by user1)
+  const proposeHash = await group.write.createProposal(
+    [0, user2.account.address, 0n, "Cancel punishment for user2"],
+    { account: user1.account }
+  );
+  await publicClient.waitForTransactionReceipt({ hash: proposeHash });
 
-      const proposalId = 1n;
+  const proposalId = 1n;
 
-      // Vote against the proposal
-      const voteHash1 = await group.write.voteOnProposal(
-        [proposalId, false],
-        { account: user3.account }
-      );
-      await publicClient.waitForTransactionReceipt({ hash: voteHash1 });
+  // Vote NO (user3, user4, user6)
+  const voteHash1 = await group.write.voteOnProposal([proposalId, false], { account: user3.account });
+  await publicClient.waitForTransactionReceipt({ hash: voteHash1 });
 
-      const voteHash2 = await group.write.voteOnProposal(
-        [proposalId, false],
-        { account: user4.account }
-      );
-      await publicClient.waitForTransactionReceipt({ hash: voteHash2 });
+  const voteHash2 = await group.write.voteOnProposal([proposalId, false], { account: user4.account });
+  await publicClient.waitForTransactionReceipt({ hash: voteHash2 });
 
-      // Wait for voting period to end
-      await (publicClient as any).request({
-      method: "evm_increaseTime",
-      params: [3 * 24 * 60 * 60 + 1], // 3 days and 1 second
-    });
+  const voteHash3 = await group.write.voteOnProposal([proposalId, false], { account: user6.account });
+  await publicClient.waitForTransactionReceipt({ hash: voteHash3 });
 
-    await (publicClient as any).request({
-      method: "evm_mine",
-    });
+  // Wait for voting period to end
+  await (publicClient as any).request({
+    method: "evm_increaseTime",
+    params: [3 * 24 * 60 * 60 + 1],
+  });
+  await (publicClient as any).request({ method: "evm_mine" });
 
-      // Try to execute proposal - should fail
-      await expect(
-        group.write.executeProposal(
-          [proposalId],
-          { account: user1.account }
-        )
-      ).to.be.rejectedWith("Proposal rejected");
-    });
+  // Try to execute proposal — should be rejected
+  await expect(
+    group.write.executeProposal([proposalId], { account: user1.account })
+  ).to.be.rejectedWith("Proposal rejected");
+});
+
 
     it("Should reject proposals with insufficient participation", async function () {
       const { group, user1, user2, user3, publicClient } = await loadFixture(setupGroupWithContributions);
@@ -453,62 +450,67 @@ describe("ChamaGroup - Punishment System", function () {
       ).to.be.rejectedWith("Voting still active");
     });
 
-    it("Should prevent double execution of proposals", async function () {
-      const { group, user1, user2, user3, user4, publicClient } = await loadFixture(setupGroupWithContributions);
+   it("Should prevent double execution of proposals", async function () {
+  const { group, user1, user2, user3, user4, user6, publicClient } = await loadFixture(setupGroupWithContributions);
 
-      // Punish member
-      const punishHash = await group.write.punishMember(
-        [user2.account.address, 2, "Test punishment"],
-        { account: user1.account }
-      );
-      await publicClient.waitForTransactionReceipt({ hash: punishHash });
+  // Punish member
+  const punishHash = await group.write.punishMember(
+    [user2.account.address, 2, "Test punishment"],
+    { account: user1.account }
+  );
+  await publicClient.waitForTransactionReceipt({ hash: punishHash });
 
-      // Create proposal
-      const proposeHash = await group.write.createProposal(
-        [0, user2.account.address, 0n, "Cancel punishment for user2"],
-        { account: user3.account }
-      );
-      await publicClient.waitForTransactionReceipt({ hash: proposeHash });
+  // Create proposal (by user1)
+  const proposeHash = await group.write.createProposal(
+    [0, user2.account.address, 0n, "Cancel punishment for user2"],
+    { account: user1.account }
+  );
+  await publicClient.waitForTransactionReceipt({ hash: proposeHash });
 
-      const proposalId = 1n;
+  const proposalId = 1n;
 
-      // Get enough votes
-      const voteHash1 = await group.write.voteOnProposal(
-        [proposalId, true],
-        { account: user3.account }
-      );
-      await publicClient.waitForTransactionReceipt({ hash: voteHash1 });
+  // Cast votes
+  const voteHash1 = await group.write.voteOnProposal(
+    [proposalId, true],
+    { account: user1.account }
+  );
+  await publicClient.waitForTransactionReceipt({ hash: voteHash1 });
 
-      const voteHash2 = await group.write.voteOnProposal(
-        [proposalId, true],
-        { account: user4.account }
-      );
-      await publicClient.waitForTransactionReceipt({ hash: voteHash2 });
+  const voteHash2 = await group.write.voteOnProposal(
+    [proposalId, true],
+    { account: user4.account }
+  );
+  await publicClient.waitForTransactionReceipt({ hash: voteHash2 });
 
-      // Wait for voting period to end
-      await (publicClient as any).request({
-        method: "evm_increaseTime",
-        params: [3 * 24 * 60 * 60 + 1], // 3 days and 1 second
-      });
+  const voteHash3 = await group.write.voteOnProposal(
+    [proposalId, true],
+    { account: user6.account }
+  );
+  await publicClient.waitForTransactionReceipt({ hash: voteHash3 });
 
-      await (publicClient as any).request({
-        method: "evm_mine",
-      });
+  // Wait for voting period to end
+  await (publicClient as any).request({
+    method: "evm_increaseTime",
+    params: [3 * 24 * 60 * 60 + 1], // 3 days and 1 second
+  });
 
-      // Execute proposal
-      const executeHash = await group.write.executeProposal(
-        [proposalId],
-        { account: user1.account }
-      );
-      await publicClient.waitForTransactionReceipt({ hash: executeHash });
+  await (publicClient as any).request({ method: "evm_mine" });
 
-      // Try to execute again - should fail
-      await expect(
-        group.write.executeProposal(
-          [proposalId],
-          { account: user1.account }
-        )
-      ).to.be.rejectedWith("Already executed");
-    });
+  // Execute proposal
+  const executeHash = await group.write.executeProposal(
+    [proposalId],
+    { account: user1.account }
+  );
+  await publicClient.waitForTransactionReceipt({ hash: executeHash });
+
+  // Try to execute again - should fail
+  await expect(
+    group.write.executeProposal(
+      [proposalId],
+      { account: user1.account }
+    )
+  ).to.be.rejectedWith("Already executed");
+});
+
   });
 });

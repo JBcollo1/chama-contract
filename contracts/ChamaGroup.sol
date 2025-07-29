@@ -591,6 +591,7 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
         
         if (punishments[user].action == ChamaStructs.PunishmentAction.Ban) {
             members[user].isActive = true;
+            
             activeMemberCount++;
         }
         
