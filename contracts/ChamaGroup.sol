@@ -725,13 +725,18 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
     /**
      * @dev Check if contribution window is open for current period
      */
-    function isContributionWindowOpen() external view returns (bool) {
-        uint256 period = getCurrentPeriod();
-        uint256 periodStart = rules.startDate + (period * PERIOD_DURATION);
-        uint256 windowEnd = periodStart + contributionWindow + gracePeriod;
+   function isContributionWindowOpen() external view returns (bool) {
+    uint256 nowTs = block.timestamp;
+    
+    uint256 elapsed = nowTs - rules.startDate;
+    uint256 period = elapsed / PERIOD_DURATION;
 
-        return block.timestamp >= periodStart && block.timestamp <= windowEnd;
-    }
+    uint256 periodStart = rules.startDate + (period * PERIOD_DURATION);
+    uint256 windowEnd = periodStart + contributionWindow + gracePeriod;
+
+    return nowTs >= periodStart && nowTs <= windowEnd;
+}
+
 
 
     /**

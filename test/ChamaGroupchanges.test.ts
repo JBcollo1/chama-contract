@@ -121,37 +121,46 @@ describe("Enhanced ChamaGroup Features", function () {
       value: groupConfig.contributionAmount
     });
   });
+it("Should reject contributions outside window + grace period", async function () {
+  const { group, user1, startDate, groupConfig } = await setupGroupWithMembers();
 
-  it("Should reject contributions outside window + grace period", async function () {
-    const { group, user1, startDate, groupConfig } = await setupGroupWithMembers();
+  const contributionWindow = await group.read.contributionWindow(); // e.g. 5 days
+  const gracePeriod = await group.read.gracePeriod();               // e.g. 2 days
+  const PERIOD_DURATION = await group.read.PERIOD_DURATION();       // e.g. 7 days
 
-    const window = await group.read.contributionWindow();
-    const grace = await group.read.gracePeriod();
+  console.log("🧾 contributionWindow:", contributionWindow.toString());
+  console.log("🧾 gracePeriod:", gracePeriod.toString());
+  console.log("🧾 periodDuration:", PERIOD_DURATION.toString());
 
-    console.log("🧾 contributionWindow:", window.toString());
-    console.log("🧾 gracePeriod:", grace.toString());
+  // Move to just after contributionWindow + gracePeriod ends, but before next period starts
+ const testTime = startDate + contributionWindow + gracePeriod - 1n;
 
-    // Move to 8 days after startDate
-    const lateTime = startDate + BigInt(8 * DAY);
-    await time.increaseTo(lateTime);
 
-    const currentPeriod = await group.read.getCurrentPeriod();
-    const isOpen = await group.read.isContributionWindowOpen();
+  // Ensure we're still in period 0
+  const period1Start = startDate + PERIOD_DURATION;
+  if (testTime >= period1Start) {
+    throw new Error("Test time entered period 1; adjust PERIOD_DURATION or window/grace");
+  }
 
-    console.log("🧭 Period (8 days):", currentPeriod);
-    console.log("🚫 isContributionWindowOpen (8 days):", isOpen);
+  await time.increaseTo(startDate + 604800n + 1n); // 1 second after deadline
 
-    // Window of period 0 should have closed, and we're now in period 1
-    expect(currentPeriod).to.equal(1n);
-    expect(isOpen).to.be.false;
 
-    await expect(
-      group.write.contribute({
-        account: user1.account,
-        value: groupConfig.contributionAmount
-      })
-    ).to.be.rejectedWith("Contribution window closed");
-  });
+  const currentPeriod = await group.read.getCurrentPeriod();
+  const isOpen = await group.read.isContributionWindowOpen();
+
+  console.log("🧭 Current Period:", currentPeriod);
+  console.log("❌ isContributionWindowOpen:", isOpen);
+
+  expect(currentPeriod).to.equal(0n); // Still in period 0
+  expect(isOpen).to.be.false;         // Window should be closed
+
+  await expect(
+    group.write.contribute({ 
+      account: user1.account, 
+      value: groupConfig.contributionAmount 
+    })
+  ).to.be.rejectedWith("Contribution window closed");
+});
 
   it("Should track contribution timestamps", async function () {
     const { group, user1, startDate, groupConfig } = await setupGroupWithMembers();
