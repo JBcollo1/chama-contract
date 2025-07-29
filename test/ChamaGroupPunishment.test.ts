@@ -88,11 +88,12 @@ describe("ChamaGroup - Punishment System", function () {
       await publicClient.waitForTransactionReceipt({ hash });
 
       const member = await group.read.getMemberDetails([user2.account.address]) as [
-        boolean,
-        boolean,
-        bigint,
-        bigint,
-        bigint
+         boolean, // exists
+          boolean, // isActive
+          bigint,  // joinedAt
+          bigint,  // totalContributed
+          bigint,  // missedContributions
+          bigint   // consecutiveFines
         ];
       expect(member[1]).to.be.false; // isActive should be false
     });
@@ -135,17 +136,17 @@ describe("ChamaGroup - Punishment System", function () {
       );
       await publicClient.waitForTransactionReceipt({ hash: punishHash });
 
-      // Propose to cancel punishment
-      const proposeHash = await group.write.proposeCancelPunishment(
-        [user2.account.address],
+      // Create proposal to cancel punishment using createProposal
+      const proposeHash = await group.write.createProposal(
+        [0, user2.account.address, 0n, "Cancel punishment for user2"], // ProposalType.CancelPunishment = 0
         { account: user3.account }
       );
       await publicClient.waitForTransactionReceipt({ hash: proposeHash });
 
       // Verify proposal was created (proposalCounter should be 1)
       const proposalId = 1n;
-      const proposal = await group.read.proposals([proposalId]);
-      expect(proposal[0]).to.equal(1); // ProposalType.CancelPunishment
+      const proposal = await group.read.getProposalDetails([proposalId]);
+      expect(proposal[0]).to.equal(0); // ProposalType.CancelPunishment
       expect(proposal[1]).to.equal(getAddress(user2.account.address)); // target
     });
 
@@ -160,8 +161,8 @@ describe("ChamaGroup - Punishment System", function () {
       await publicClient.waitForTransactionReceipt({ hash: punishHash });
 
       // Create proposal
-      const proposeHash = await group.write.proposeCancelPunishment(
-        [user2.account.address],
+      const proposeHash = await group.write.createProposal(
+        [0, user2.account.address, 0n, "Cancel ban for user2"], // ProposalType.CancelPunishment = 0
         { account: user3.account }
       );
       await publicClient.waitForTransactionReceipt({ hash: proposeHash });
@@ -183,9 +184,9 @@ describe("ChamaGroup - Punishment System", function () {
       await publicClient.waitForTransactionReceipt({ hash: voteHash2 });
 
       // Check votes
-      const proposal = await group.read.proposals([proposalId]);
-      expect(proposal[2]).to.equal(1n); // votesFor
-      expect(proposal[3]).to.equal(1n); // votesAgainst
+      const proposal = await group.read.getProposalDetails([proposalId]);
+      expect(proposal[4]).to.equal(1n); // votesFor
+      expect(proposal[5]).to.equal(1n); // votesAgainst
     });
 
     it("Should prevent double voting on proposals", async function () {
@@ -199,8 +200,8 @@ describe("ChamaGroup - Punishment System", function () {
       await publicClient.waitForTransactionReceipt({ hash: punishHash });
 
       // Create proposal
-      const proposeHash = await group.write.proposeCancelPunishment(
-        [user2.account.address],
+      const proposeHash = await group.write.createProposal(
+        [0, user2.account.address, 0n, "Cancel punishment for user2"],
         { account: user3.account }
       );
       await publicClient.waitForTransactionReceipt({ hash: proposeHash });
@@ -235,13 +236,13 @@ describe("ChamaGroup - Punishment System", function () {
 
       // Verify member is banned
       let member = await group.read.getMemberDetails([user2.account.address]) as [
-        boolean, boolean, bigint, bigint, bigint
+        boolean, boolean, bigint, bigint, bigint, bigint
       ];
       expect(member[1]).to.be.false; // isActive should be false
 
       // Create proposal
-      const proposeHash = await group.write.proposeCancelPunishment(
-        [user2.account.address],
+      const proposeHash = await group.write.createProposal(
+        [0, user2.account.address, 0n, "Cancel ban for user2"],
         { account: user3.account }
       );
       await publicClient.waitForTransactionReceipt({ hash: proposeHash });
@@ -285,7 +286,7 @@ describe("ChamaGroup - Punishment System", function () {
       expect(punishment[2]).to.be.false; // isActive should be false
 
       member = await group.read.getMemberDetails([user2.account.address]) as [
-        boolean, boolean, bigint, bigint, bigint
+        boolean, boolean, bigint, bigint, bigint, bigint
       ];
       expect(member[1]).to.be.true; // isActive should be true again
     });
@@ -301,8 +302,8 @@ describe("ChamaGroup - Punishment System", function () {
       await publicClient.waitForTransactionReceipt({ hash: punishHash });
 
       // Create proposal
-      const proposeHash = await group.write.proposeCancelPunishment(
-        [user2.account.address],
+      const proposeHash = await group.write.createProposal(
+        [0, user2.account.address, 0n, "Cancel punishment for user2"],
         { account: user3.account }
       );
       await publicClient.waitForTransactionReceipt({ hash: proposeHash });
@@ -332,8 +333,6 @@ describe("ChamaGroup - Punishment System", function () {
       method: "evm_mine",
     });
 
-      // Execute proposal - should fail due to insufficient votes
-
       // Try to execute proposal - should fail
       await expect(
         group.write.executeProposal(
@@ -354,8 +353,8 @@ describe("ChamaGroup - Punishment System", function () {
       await publicClient.waitForTransactionReceipt({ hash: punishHash });
 
       // Create proposal
-      const proposeHash = await group.write.proposeCancelPunishment(
-        [user2.account.address],
+      const proposeHash = await group.write.createProposal(
+        [0, user2.account.address, 0n, "Cancel punishment for user2"],
         { account: user3.account }
       );
       await publicClient.waitForTransactionReceipt({ hash: proposeHash });
@@ -379,7 +378,6 @@ describe("ChamaGroup - Punishment System", function () {
         method: "evm_mine",
       });
 
-
       // Try to execute proposal - should fail due to insufficient participation
       await expect(
         group.write.executeProposal(
@@ -400,8 +398,8 @@ describe("ChamaGroup - Punishment System", function () {
       await publicClient.waitForTransactionReceipt({ hash: punishHash });
 
       // Create proposal
-      const proposeHash = await group.write.proposeCancelPunishment(
-        [user2.account.address],
+      const proposeHash = await group.write.createProposal(
+        [0, user2.account.address, 0n, "Cancel punishment for user2"],
         { account: user3.account }
       );
       await publicClient.waitForTransactionReceipt({ hash: proposeHash });
@@ -417,7 +415,6 @@ describe("ChamaGroup - Punishment System", function () {
       await (publicClient as any).request({
         method: "evm_mine",
       });
-
 
       // Try to vote after period ends - should fail
       await expect(
@@ -439,8 +436,8 @@ describe("ChamaGroup - Punishment System", function () {
       await publicClient.waitForTransactionReceipt({ hash: punishHash });
 
       // Create proposal
-      const proposeHash = await group.write.proposeCancelPunishment(
-        [user2.account.address],
+      const proposeHash = await group.write.createProposal(
+        [0, user2.account.address, 0n, "Cancel punishment for user2"],
         { account: user3.account }
       );
       await publicClient.waitForTransactionReceipt({ hash: proposeHash });
@@ -467,8 +464,8 @@ describe("ChamaGroup - Punishment System", function () {
       await publicClient.waitForTransactionReceipt({ hash: punishHash });
 
       // Create proposal
-      const proposeHash = await group.write.proposeCancelPunishment(
-        [user2.account.address],
+      const proposeHash = await group.write.createProposal(
+        [0, user2.account.address, 0n, "Cancel punishment for user2"],
         { account: user3.account }
       );
       await publicClient.waitForTransactionReceipt({ hash: proposeHash });
@@ -497,7 +494,6 @@ describe("ChamaGroup - Punishment System", function () {
       await (publicClient as any).request({
         method: "evm_mine",
       });
-
 
       // Execute proposal
       const executeHash = await group.write.executeProposal(
