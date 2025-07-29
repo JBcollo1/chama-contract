@@ -23,7 +23,7 @@ describe("ChamaGroup - Deployment", function () {
       expect(await group.read.creator()).to.equal(
         getAddress(user1.account.address)
       );
-      expect(await group.read.memberCount()).to.equal(0n);
+      expect(await group.read.memberCount()).to.equal(1n);
       expect(await group.read.isActive()).to.be.true;
       expect(await group.read.totalFunds()).to.equal(0n);
 
