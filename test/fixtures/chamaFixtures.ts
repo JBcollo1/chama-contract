@@ -52,8 +52,9 @@ function buildGroupConfig({
     emergencyWithdrawAllowed: true,
     creator,
     contributionToken: "0x0000000000000000000000000000000000000000" as `0x${string}`,
-    gracePeriod: 86400n, // 1 day
-    contributionWindow: 3600n, // 1 hour
+    contributionWindow: 5n * 24n * 60n * 60n,  // 5 days
+    gracePeriod: 2n * 24n * 60n * 60n,         // 2 days
+
   };
 }
 

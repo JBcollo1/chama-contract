@@ -90,44 +90,87 @@ describe("Enhanced ChamaGroup Features", function () {
     });
   });
 
-  describe("Contribution Deadline and Grace Period", function () {
-    it("Should respect contribution windows", async function () {
-      const { group, user1, user2, startDate, groupConfig } = await setupGroupWithMembers();
+   describe("Contribution Deadline and Grace Period", function () {
+  const DAY = 24 * 60 * 60;
 
-      // Move to middle of contribution window
-      await time.increaseTo(startDate + BigInt(3 * 24 * 60 * 60)); // 3 days after start
+  it("Should respect contribution windows", async function () {
+    const { group, user1, startDate, groupConfig } = await setupGroupWithMembers();
 
-      expect(await group.read.isContributionWindowOpen()).to.be.true;
+    // Log contribution window values
+    const window = await group.read.contributionWindow();
+    const grace = await group.read.gracePeriod();
 
-      await group.write.contribute({ account: user1.account, value: groupConfig.contributionAmount });
-    });
+    console.log("🧾 contributionWindow:", window.toString());
+    console.log("🧾 gracePeriod:", grace.toString());
 
-    it("Should reject contributions outside window + grace period", async function () {
-      const { group, user1, startDate, groupConfig } = await setupGroupWithMembers();
+    // Move to 3 days after startDate (should be within period 0 window)
+    const contributionTime = startDate + BigInt(3 * DAY);
+    await time.increaseTo(contributionTime);
 
-      // Move past contribution window + grace period (5 + 2 = 7 days)
-      await time.increaseTo(startDate + BigInt(8 * 24 * 60 * 60));
+    const currentPeriod = await group.read.getCurrentPeriod();
+    const isOpen = await group.read.isContributionWindowOpen();
 
-      expect(await group.read.isContributionWindowOpen()).to.be.false;
+    console.log("🧭 Period (3 days):", currentPeriod);
+    console.log("✅ isContributionWindowOpen (3 days):", isOpen);
 
-      await expect(
-        group.write.contribute({ account: user1.account, value: groupConfig.contributionAmount })
-      ).to.be.rejectedWith("Contribution window closed");
-    });
+    expect(currentPeriod).to.equal(0n);
+    expect(isOpen).to.be.true;
 
-    it("Should track contribution timestamps", async function () {
-      const { group, user1, startDate, groupConfig } = await setupGroupWithMembers();
-
-      const contributionTime = startDate + BigInt(2 * 24 * 60 * 60);
-      await time.increaseTo(contributionTime);
-
-      await group.write.contribute({ account: user1.account, value: groupConfig.contributionAmount });
-
-      const timestamp = await group.read.getMemberContributionTimestamp([user1.account.address, 0n]);
-      expect(timestamp > 0n).to.be.true;
-
+    await group.write.contribute({
+      account: user1.account,
+      value: groupConfig.contributionAmount
     });
   });
+
+  it("Should reject contributions outside window + grace period", async function () {
+    const { group, user1, startDate, groupConfig } = await setupGroupWithMembers();
+
+    const window = await group.read.contributionWindow();
+    const grace = await group.read.gracePeriod();
+
+    console.log("🧾 contributionWindow:", window.toString());
+    console.log("🧾 gracePeriod:", grace.toString());
+
+    // Move to 8 days after startDate
+    const lateTime = startDate + BigInt(8 * DAY);
+    await time.increaseTo(lateTime);
+
+    const currentPeriod = await group.read.getCurrentPeriod();
+    const isOpen = await group.read.isContributionWindowOpen();
+
+    console.log("🧭 Period (8 days):", currentPeriod);
+    console.log("🚫 isContributionWindowOpen (8 days):", isOpen);
+
+    // Window of period 0 should have closed, and we're now in period 1
+    expect(currentPeriod).to.equal(1n);
+    expect(isOpen).to.be.false;
+
+    await expect(
+      group.write.contribute({
+        account: user1.account,
+        value: groupConfig.contributionAmount
+      })
+    ).to.be.rejectedWith("Contribution window closed");
+  });
+
+  it("Should track contribution timestamps", async function () {
+    const { group, user1, startDate, groupConfig } = await setupGroupWithMembers();
+
+    const contributionTime = startDate + BigInt(2 * DAY);
+    await time.increaseTo(contributionTime);
+
+    await group.write.contribute({
+      account: user1.account,
+      value: groupConfig.contributionAmount
+    });
+
+    const timestamp = await group.read.getMemberContributionTimestamp([user1.account.address, 0n]);
+    console.log("🕓 Contribution timestamp:", timestamp.toString());
+
+    expect(timestamp > 0n).to.be.true;
+  });
+});
+
 
   describe("Rotation Skipping for Punished Members", function () {
     it("Should skip banned members and adjust rotation", async function () {
