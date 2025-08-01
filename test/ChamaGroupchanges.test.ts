@@ -155,6 +155,280 @@ it("Should reject contributions outside window + grace period", async function (
     })
   ).to.be.rejectedWith("Contribution window closed");
 });
+describe("Contribution with Missed Previous Periods", function () {
+  
+  it("Should allow contribution if no previous periods were missed", async function () {
+    const { group, user1, startDate, groupConfig } = await setupGroupWithMembers();
+    
+    // Move to period 1, within contribution window
+    const PERIOD_DURATION = await group.read.PERIOD_DURATION();
+    const contributionWindow = await group.read.contributionWindow();
+    const period1Start = startDate + PERIOD_DURATION;
+    const testTime = period1Start + (contributionWindow / 2n); // Middle of window
+    
+    await time.increaseTo(testTime);
+    
+    const currentPeriod = await group.read.getCurrentPeriod();
+    expect(currentPeriod).to.equal(1n);
+    
+    // Should succeed since no previous periods were missed
+    await expect(
+      group.write.contribute({
+        account: user1.account,
+        value: groupConfig.contributionAmount,
+      })
+    ).not.to.be.rejected;
+  });
+
+  it("Should detect and punish missed contribution in previous period", async function () {
+    const { group, user1, user2, startDate, groupConfig } = await setupGroupWithMembers();
+    
+    const PERIOD_DURATION = await group.read.PERIOD_DURATION();
+    const contributionWindow = await group.read.contributionWindow();
+    const gracePeriod = await group.read.gracePeriod();
+    
+    // Let user2 contribute in period 0, but user1 misses it
+    await group.write.contribute({
+      account: user2.account,
+      value: groupConfig.contributionAmount,
+    });
+    
+    // Move past period 0 window (user1 missed period 0)
+    const period0WindowEnd = startDate + contributionWindow + gracePeriod;
+    await time.increaseTo(period0WindowEnd + 1n);
+    
+    // Move to period 1, within contribution window
+    const period1Start = startDate + PERIOD_DURATION;
+    const testTime = period1Start + (contributionWindow / 2n);
+    await time.increaseTo(testTime);
+    
+    const currentPeriod = await group.read.getCurrentPeriod();
+    expect(currentPeriod).to.equal(1n);
+    
+    // Check initial state
+    const memberDetailsBefore = await group.read.getMemberDetails([user1.account.address]);
+    expect(memberDetailsBefore[4]).to.equal(0n); // missedContributions should be 0
+    
+    // When user1 tries to contribute in period 1, it should detect missed period 0
+    await expect(
+      group.write.contribute({
+        account: user1.account,
+        value: groupConfig.contributionAmount,
+      })
+    ).to.emit(group, "MissedContributionDetected")
+      .withArgs(user1.account.address, 0n, anyValue);
+    
+    // Check that missed contribution was recorded
+    const memberDetailsAfter = await group.read.getMemberDetails([user1.account.address]);
+    expect(memberDetailsAfter[4]).to.equal(1n); // missedContributions should be 1
+    
+    // Check lastCheckedPeriod was updated
+    const lastChecked = await group.read.lastCheckedPeriod([user1.account.address]);
+    expect(lastChecked).to.equal(0n); // Should be set to period 0 (currentPeriod - 1)
+  });
+
+  it("Should ban member after exceeding maximum missed contributions", async function () {
+    const { group, user1, startDate, groupConfig } = await setupGroupWithMembers();
+    
+    const PERIOD_DURATION = await group.read.PERIOD_DURATION();
+    const contributionWindow = await group.read.contributionWindow();
+    const gracePeriod = await group.read.gracePeriod();
+    const MAX_MISSED = await group.read.MAX_MISSED_CONTRIBUTIONS();
+    
+    // Simulate missing multiple periods by advancing time
+    let currentTime = startDate;
+    
+    // Skip periods 0, 1, 2 (miss 3 contributions)
+    for (let period = 0; period < Number(MAX_MISSED); period++) {
+      const periodEnd = currentTime + contributionWindow + gracePeriod + 1n;
+      await time.increaseTo(periodEnd);
+      currentTime += PERIOD_DURATION;
+    }
+    
+    // Move to next period within contribution window
+    const nextPeriodStart = currentTime;
+    const testTime = nextPeriodStart + (contributionWindow / 2n);
+    await time.increaseTo(testTime);
+    
+    const currentPeriod = await group.read.getCurrentPeriod();
+    console.log("Current period:", currentPeriod.toString());
+    console.log("Missed periods: 0, 1, 2");
+    
+    // Check member is initially active
+    const memberDetailsBefore = await group.read.getMemberDetails([user1.account.address]);
+    expect(memberDetailsBefore[1]).to.be.true; // isActive should be true
+    
+    // When user tries to contribute, should detect all missed periods and ban
+    await expect(
+      group.write.contribute({
+        account: user1.account,
+        value: groupConfig.contributionAmount,
+      })
+    ).to.emit(group, "MemberPunished")
+      .withArgs(user1.account.address, "Exceeded maximum missed contributions", 2, 0); // Ban = 2
+    
+    // Check member is now banned
+    const memberDetailsAfter = await group.read.getMemberDetails([user1.account.address]);
+    expect(memberDetailsAfter[1]).to.be.false; // isActive should be false
+    expect(memberDetailsAfter[4]).to.equal(MAX_MISSED); // missedContributions should be MAX_MISSED
+    
+    // Subsequent contribution attempt should fail
+    await expect(
+      group.write.contribute({
+        account: user1.account,
+        value: groupConfig.contributionAmount,
+      })
+    ).to.be.rejectedWith("Member is not active (possibly banned for missed contributions)");
+  });
+
+  it("Should not double-punish for same missed period", async function () {
+    const { group, user1, startDate, groupConfig } = await setupGroupWithMembers();
+    
+    const PERIOD_DURATION = await group.read.PERIOD_DURATION();
+    const contributionWindow = await group.read.contributionWindow();
+    const gracePeriod = await group.read.gracePeriod();
+    
+    // Miss period 0
+    const period0WindowEnd = startDate + contributionWindow + gracePeriod;
+    await time.increaseTo(period0WindowEnd + 1n);
+    
+    // Move to period 1
+    const period1Start = startDate + PERIOD_DURATION;
+    let testTime = period1Start + (contributionWindow / 2n);
+    await time.increaseTo(testTime);
+    
+    // First contribution attempt - should detect missed period 0
+    await group.write.contribute({
+      account: user1.account,
+      value: groupConfig.contributionAmount,
+    });
+
+    const memberDetailsAfter1st = await group.read.getMemberDetails([user1.account.address]);
+    expect(memberDetailsAfter1st[4]).to.equal(1n); // missedContributions = 1
+    
+    // Move to period 2
+    const period2Start = startDate + (PERIOD_DURATION * 2n);
+    testTime = period2Start + (contributionWindow / 2n);
+    await time.increaseTo(testTime);
+    
+    // Second contribution attempt - should NOT double-count period 0
+    await group.write.contribute({
+      account: user1.account,
+      value: groupConfig.contributionAmount,
+    });
+    
+    const memberDetailsAfter2nd = await group.read.getMemberDetails([user1.account.address]);
+    expect(memberDetailsAfter2nd[4]).to.equal(2n); // missedContributions = 2 (missed period 1, not double-counting period 0)
+  });
+
+  it("Should check multiple missed periods in one contribution call", async function () {
+    const { group, user1, startDate, groupConfig } = await setupGroupWithMembers();
+    
+    const PERIOD_DURATION = await group.read.PERIOD_DURATION();
+    const contributionWindow = await group.read.contributionWindow();
+    const gracePeriod = await group.read.gracePeriod();
+    
+    // Skip periods 0 and 1 completely
+    let currentTime = startDate;
+    for (let period = 0; period < 2; period++) {
+      const periodEnd = currentTime + contributionWindow + gracePeriod + 1n;
+      await time.increaseTo(periodEnd);
+      currentTime += PERIOD_DURATION;
+    }
+    
+    // Move to period 2, within contribution window
+    const period2Start = startDate + (PERIOD_DURATION * 2n);
+    const testTime = period2Start + (contributionWindow / 2n);
+    await time.increaseTo(testTime);
+    
+    const currentPeriod = await group.read.getCurrentPeriod();
+    expect(currentPeriod).to.equal(2n);
+    
+    // Should detect both missed periods (0 and 1) in one call
+    const tx = await group.write.contribute({
+      account: user1.account,
+      value: groupConfig.contributionAmount,
+    });
+    
+    // Should emit MissedContributionDetected events for both periods
+    await expect(tx).to.emit(group, "MissedContributionDetected");
+    
+    const memberDetails = await group.read.getMemberDetails([user1.account.address]);
+    expect(memberDetails[4]).to.equal(2n); // missedContributions should be 2
+  });
+
+  it("Should get missed periods for debugging", async function () {
+    const { group, user1, startDate, groupConfig } = await setupGroupWithMembers();
+    
+    const PERIOD_DURATION = await group.read.PERIOD_DURATION();
+    const contributionWindow = await group.read.contributionWindow();
+    const gracePeriod = await group.read.gracePeriod();
+    
+    // Skip periods 0 and 2, contribute in period 1
+    // Skip period 0
+    let currentTime = startDate + contributionWindow + gracePeriod + 1n;
+    await time.increaseTo(currentTime);
+    
+    // Move to period 1 and contribute
+    currentTime = startDate + PERIOD_DURATION + (contributionWindow / 2n);
+    await time.increaseTo(currentTime);
+    
+    await group.write.contribute({
+      account: user1.account,
+      value: groupConfig.contributionAmount,
+    });
+    
+    // Skip period 2
+    currentTime = startDate + (PERIOD_DURATION * 2n) + contributionWindow + gracePeriod + 1n;
+    await time.increaseTo(currentTime);
+    
+    // Move to period 3
+    currentTime = startDate + (PERIOD_DURATION * 3n) + (contributionWindow / 2n);
+    await time.increaseTo(currentTime);
+    
+    // Get missed periods (should show periods 0 and 2)
+    const missedPeriods = await group.read.getMissedPeriods([user1.account.address]);
+    
+    console.log("Missed periods:", missedPeriods.map(p => p.toString()));
+    expect(missedPeriods).to.have.lengthOf(2);
+    expect(missedPeriods[0]).to.equal(0n); // Period 0
+    expect(missedPeriods[1]).to.equal(2n); // Period 2
+  });
+
+  it("Should reject contribution if outside window even with missed periods", async function () {
+    const { group, user1, startDate, groupConfig } = await setupGroupWithMembers();
+    
+    const PERIOD_DURATION = await group.read.PERIOD_DURATION();
+    const contributionWindow = await group.read.contributionWindow();
+    const gracePeriod = await group.read.gracePeriod();
+    
+    // Miss period 0
+    const period0WindowEnd = startDate + contributionWindow + gracePeriod + 1n;
+    await time.increaseTo(period0WindowEnd);
+    
+    // Move to period 1, but OUTSIDE the contribution window
+    const period1Start = startDate + PERIOD_DURATION;
+    const period1WindowEnd = period1Start + contributionWindow + gracePeriod;
+    const testTime = period1WindowEnd + 1n; // After period 1 window closes
+    
+    await time.increaseTo(testTime);
+    
+    const currentPeriod = await group.read.getCurrentPeriod();
+    const isOpen = await group.read.isContributionWindowOpen();
+    
+    expect(currentPeriod).to.equal(1n);
+    expect(isOpen).to.be.false;
+    
+    // Should reject due to window being closed, even though user missed period 0
+    await expect(
+      group.write.contribute({
+        account: user1.account,
+        value: groupConfig.contributionAmount,
+      })
+    ).to.be.rejectedWith("Contribution window closed");
+  });
+
+});
 
 
   it("Should track contribution timestamps", async function () {
