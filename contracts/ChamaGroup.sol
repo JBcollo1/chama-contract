@@ -304,6 +304,11 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
     function contribute() external payable onlyActiveMember onlyActiveGroup nonReentrant {
         uint256 period = getCurrentPeriod();
         require(contributionTimestamps[msg.sender][period] == 0, "Already contributed this period");
+
+        require(
+        period == 0 || contributionTimestamps[msg.sender][period - 1] != 0,
+        "Missed previous period"
+        );
         
         // Check if within contribution window
         uint256 periodStart = rules.startDate + (period * PERIOD_DURATION);
