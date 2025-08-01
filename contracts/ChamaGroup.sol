@@ -45,6 +45,7 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
     mapping(address => uint256[]) public memberPayoutPeriods; // Track member payout history
     
     mapping(uint256 => Proposal) public proposals;
+    mapping(address => uint256) public lastCheckedPeriod;
     // FIXED: Moved hasVoted mapping outside of struct
     mapping(uint256 => mapping(address => bool)) public proposalVotes;
     mapping(address => mapping(uint256 => uint256)) public contributionTimestamps; // Track when contributions were made
@@ -94,6 +95,8 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
     event ProposalCreated(uint256 indexed proposalId, ChamaStructs.ProposalType proposalType, address indexed creator);
     event ProposalExecuted(uint256 indexed proposalId, bool success);
     event CreatorTransferred(address indexed oldCreator, address indexed newCreator);
+    event MissedContributionDetected(address indexed user, uint256 period, uint256 timestamp);
+
 
     // FIXED: Added onlyCreator modifier
     modifier onlyCreator() {
@@ -301,34 +304,91 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
     /**
      * @dev Enhanced contribution with token support and timing validation
      */
-    function contribute() external payable onlyActiveMember onlyActiveGroup nonReentrant {
-        uint256 period = getCurrentPeriod();
-        require(contributionTimestamps[msg.sender][period] == 0, "Already contributed this period");
+   function contribute() external payable onlyActiveMember onlyActiveGroup nonReentrant {
+    uint256 period = getCurrentPeriod();
+    require(contributionTimestamps[msg.sender][period] == 0, "Already contributed this period");
 
-        require(
-        period == 0 || contributionTimestamps[msg.sender][period - 1] != 0,
-        "Missed previous period"
-        );
-        
-        // Check if within contribution window
-        uint256 periodStart = rules.startDate + (period * PERIOD_DURATION);
-        require(
-            block.timestamp <= periodStart + contributionWindow + gracePeriod,
-            "Contribution window closed"
-        );
+    // Check and punish for any missed previous periods
+    checkAndPunishMissedContributions(msg.sender);
+    
+    // If member got banned due to missed contributions, they can't contribute
+    require(members[msg.sender].isActive, "Member is not active (possibly banned for missed contributions)");
+    
+    // Check if within contribution window
+    uint256 periodStart = rules.startDate + (period * PERIOD_DURATION);
+    require(
+        block.timestamp <= periodStart + contributionWindow + gracePeriod,
+        "Contribution window closed"
+    );
 
-        if (isTokenBased) {
-            require(msg.value == 0, "Don't send ETH for token contributions");
-            contributionToken.safeTransferFrom(msg.sender, address(this), rules.contributionAmount);
-        } else {
-            require(msg.value == rules.contributionAmount, "Incorrect contribution amount");
+    if (isTokenBased) {
+        require(msg.value == 0, "Don't send ETH for token contributions");
+        contributionToken.safeTransferFrom(msg.sender, address(this), rules.contributionAmount);
+    } else {
+        require(msg.value == rules.contributionAmount, "Incorrect contribution amount");
+    }
+
+    contributionTimestamps[msg.sender][period] = block.timestamp;
+    members[msg.sender].totalContributed += rules.contributionAmount;
+    totalFunds += rules.contributionAmount;
+
+    emit ContributionMade(msg.sender, rules.contributionAmount, period, block.timestamp);
+}
+
+    /**
+     * @dev Admin function to manually check missed contributions for any member
+     * This replaces the existing checkMissedContribution function
+     */
+    function checkMissedContribution(address user) external onlyAdmin {
+        checkAndPunishMissedContributions(user);
+    }
+
+    /**
+     * @dev Batch check missed contributions for multiple members (gas efficient)
+     */
+    function batchCheckMissedContributions(address[] calldata users) external onlyAdmin {
+        for (uint256 i = 0; i < users.length; i++) {
+            checkAndPunishMissedContributions(users[i]);
         }
+    }
 
-        contributionTimestamps[msg.sender][period] = block.timestamp;
-        members[msg.sender].totalContributed += rules.contributionAmount;
-        totalFunds += rules.contributionAmount;
+    /**
+     * @dev Get missed periods for a member (view function for debugging)
+     */
+    function getMissedPeriods(address user) external view returns (uint256[] memory) {
+        if (!members[user].exists) {
+            return new uint256[](0);
+        }
+        
+        uint256 currenPeriod = getCurrentPeriod();
+        uint256[] memory missedPeriods = new uint256[](currentPeriod);
+        uint256 missedCount = 0;
+        
+        for (uint256 period = 1; period < currenPeriod; period++) {
+            uint256 periodStart = rules.startDate + (period * PERIOD_DURATION);
+            uint256 deadline = periodStart + contributionWindow + gracePeriod;
+            
+            if (block.timestamp > deadline && contributionTimestamps[user][period] == 0) {
+                missedPeriods[missedCount] = period;
+                missedCount++;
+            }
+        }
+        
+        // Resize array to actual missed count
+        uint256[] memory result = new uint256[](missedCount);
+        for (uint256 i = 0; i < missedCount; i++) {
+            result[i] = missedPeriods[i];
+        }
+        
+        return result;
+    }
 
-        emit ContributionMade(msg.sender, rules.contributionAmount, period, block.timestamp);
+    /**
+     * @dev Reset last checked period (admin only - for emergency cases)
+     */
+    function resetLastCheckedPeriod(address user, uint256 period) external onlyAdmin {
+        require(period <= getCurrentPeriod(), "Cannot set future period");
+        lastCheckedPeriod[user] = period;
     }
 
     /**
@@ -358,26 +418,38 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
     /**
      * @dev Enhanced missed contribution check with timing validation
      */
-    function checkMissedContribution(address user) external onlyAdmin {
-        require(members[user].exists && members[user].isActive, "User is not active member");
+    function checkAndPunishMissedContributions(address user) internal {
+    if (!members[user].exists || !members[user].isActive) return;
+    
+    uint256 currenPeriod = getCurrentPeriod();
+    uint256 lastChecked = lastCheckedPeriod[user];
+    
+    // Start checking from the period after last checked, or from period 1 if never checked
+    uint256 startPeriod = lastChecked == 0 ? 1 : lastChecked + 1;
+    
+    // Check all periods up to current period - 1 (we don't check current period)
+    for (uint256 period = startPeriod; period < currentPeriod; period++) {
+        uint256 periodStart = rules.startDate + (period * PERIOD_DURATION);
+        uint256 deadline = periodStart + contributionWindow + gracePeriod;
         
-        uint256 period = getCurrentPeriod();
-        if (period > 0) {
-            uint256 prevPeriod = period - 1;
-            uint256 periodStart = rules.startDate + (prevPeriod * PERIOD_DURATION);
-            uint256 deadline = periodStart + contributionWindow + gracePeriod;
+        // Only check periods where deadline has passed
+        if (block.timestamp > deadline && contributionTimestamps[user][period] == 0) {
+            members[user].missedContributions++;
+            emit MissedContributionDetected(user, period, block.timestamp);
             
-            // Check if deadline passed and no contribution made
-            if (block.timestamp > deadline && contributionTimestamps[user][prevPeriod] == 0) {
-                members[user].missedContributions++;
-                
-                if (members[user].missedContributions >= MAX_MISSED_CONTRIBUTIONS) {
-                    _applyPunishment(user, "Exceeded maximum missed contributions");
-                }
+            // Apply punishment if threshold reached
+            if (members[user].missedContributions >= MAX_MISSED_CONTRIBUTIONS) {
+                _applyPunishment(user, "Exceeded maximum missed contributions");
+                break; // Stop checking once punishment is applied
             }
         }
     }
-
+    
+    // Update last checked period to current period - 1
+    if (currenPeriod > 0) {
+        lastCheckedPeriod[user] = currenPeriod - 1;
+    }
+}
     /**
      * @dev Enhanced punishment system
      */
