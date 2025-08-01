@@ -14,7 +14,7 @@ export const FINE_AMOUNT = parseEther("0.01");
 
 // Fixtures
 export async function deployFactoryFixture() {
-  const [owner, user1, user2, user3, user4, user6] = await hre.viem.getWalletClients();
+  const [owner, user1, user2, user3, user4, user6,user7] = await hre.viem.getWalletClients();
   const factory = await hre.viem.deployContract("ChamaFactory", [owner.account.address]);
   const publicClient = await hre.viem.getPublicClient();
 
@@ -26,6 +26,7 @@ export async function deployFactoryFixture() {
     user3,
     user4,
     user6,
+    user7,
     publicClient,
   };
 }
@@ -59,7 +60,7 @@ function buildGroupConfig({
 }
 
 export async function deployGroupFixture() {
-  const { factory, owner, user1, user2, user3, user4, user6, publicClient } =
+  const { factory, owner, user1, user2, user3, user4, user6, user7, publicClient } =
     await loadFixture(deployFactoryFixture);
 
   const currentTime = BigInt(await time.latest());
@@ -93,6 +94,7 @@ export async function deployGroupFixture() {
     user3,
     user4,
     user6,
+    user7,
     publicClient,
     startDate,
     endDate,
@@ -101,7 +103,7 @@ export async function deployGroupFixture() {
 
 export async function setupGroupWithMembers() {
   const fixture = await loadFixture(deployGroupFixture);
-  const { group, user1, user2, user3, user4,user6, publicClient, startDate } = fixture;
+  const { group, user1, user2, user3, user4,user6,  publicClient, startDate } = fixture;
 
   await time.increaseTo(startDate);
 

@@ -798,6 +798,7 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
             punishment.fineAmount
         );
     }
+    
 
     /**
      * @dev Get proposal details
