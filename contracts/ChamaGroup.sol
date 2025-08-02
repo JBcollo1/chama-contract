@@ -7,6 +7,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import "./ChamaStructs.sol";
+import "hardhat/console.sol"; 
 
 /**
  * @title Enhanced ChamaGroup
@@ -361,10 +362,10 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
         }
         
         uint256 currenPeriod = getCurrentPeriod();
-        uint256[] memory missedPeriods = new uint256[](currentPeriod);
+        uint256[] memory missedPeriods = new uint256[](currenPeriod);
         uint256 missedCount = 0;
         
-        for (uint256 period = 1; period < currenPeriod; period++) {
+        for (uint256 period = 0; period < currenPeriod; period++) {
             uint256 periodStart = rules.startDate + (period * PERIOD_DURATION);
             uint256 deadline = periodStart + contributionWindow + gracePeriod;
             
@@ -419,37 +420,46 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
      * @dev Enhanced missed contribution check with timing validation
      */
     function checkAndPunishMissedContributions(address user) internal {
-    if (!members[user].exists || !members[user].isActive) return;
-    
+    if (!members[user].exists || !members[user].isActive) {
+        console.log("Skipping user, not active or doesn't exist");
+        return;
+    }
+
     uint256 currenPeriod = getCurrentPeriod();
     uint256 lastChecked = lastCheckedPeriod[user];
-    
-    // Start checking from the period after last checked, or from period 1 if never checked
-    uint256 startPeriod = lastChecked == 0 ? 1 : lastChecked + 1;
-    
-    // Check all periods up to current period - 1 (we don't check current period)
-    for (uint256 period = startPeriod; period < currentPeriod; period++) {
+    uint256 startPeriod = lastChecked > 0 ? lastChecked + 1 : 0;
+
+
+    console.log("Current period:", currenPeriod);
+    console.log("Last checked period:", lastChecked);
+    console.log("Starting check from:", startPeriod);
+
+    for (uint256 period = startPeriod; period < currenPeriod; period++) {
         uint256 periodStart = rules.startDate + (period * PERIOD_DURATION);
         uint256 deadline = periodStart + contributionWindow + gracePeriod;
-        
-        // Only check periods where deadline has passed
-        if (block.timestamp > deadline && contributionTimestamps[user][period] == 0) {
+        bool missed = (block.timestamp > deadline && contributionTimestamps[user][period] == 0);
+
+        console.log("Checking period:", period);
+        console.log("  Period start:", periodStart);
+        console.log("  Deadline:", deadline);
+        console.log("  Contribution timestamp:", contributionTimestamps[user][period]);
+        console.log("  Block.timestamp:", block.timestamp);
+        console.log("  Missed?", missed);
+
+        if (missed) {
             members[user].missedContributions++;
             emit MissedContributionDetected(user, period, block.timestamp);
-            
-            // Apply punishment if threshold reached
+            console.log("  >> Missed contribution detected!");
+
             if (members[user].missedContributions >= MAX_MISSED_CONTRIBUTIONS) {
+                console.log("  >> Applying punishment");
                 _applyPunishment(user, "Exceeded maximum missed contributions");
-                break; // Stop checking once punishment is applied
+                break;
             }
         }
     }
-    
-    // Update last checked period to current period - 1
-    if (currenPeriod > 0) {
-        lastCheckedPeriod[user] = currenPeriod - 1;
-    }
 }
+
     /**
      * @dev Enhanced punishment system
      */
