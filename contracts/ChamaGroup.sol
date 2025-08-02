@@ -285,6 +285,8 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
             consecutiveFines: 0
         });
         memberCount++;
+        lastCheckedPeriod[user] = type(uint256).max;
+
         activeMemberCount++;
         emit MemberJoined(user, block.timestamp);
     }
@@ -419,46 +421,35 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
     /**
      * @dev Enhanced missed contribution check with timing validation
      */
-    function checkAndPunishMissedContributions(address user) internal {
-    if (!members[user].exists || !members[user].isActive) {
-        console.log("Skipping user, not active or doesn't exist");
-        return;
-    }
+function checkAndPunishMissedContributions(address user) internal {
+    if (!members[user].exists || !members[user].isActive) return;
 
-    uint256 currenPeriod = getCurrentPeriod();
+    uint256 currPeriod = getCurrentPeriod();
     uint256 lastChecked = lastCheckedPeriod[user];
-    uint256 startPeriod = lastChecked > 0 ? lastChecked + 1 : 0;
 
+    uint256 startPeriod = lastChecked == type(uint256).max ? 0 : lastChecked + 1;
 
-    console.log("Current period:", currenPeriod);
-    console.log("Last checked period:", lastChecked);
-    console.log("Starting check from:", startPeriod);
-
-    for (uint256 period = startPeriod; period < currenPeriod; period++) {
+    for (uint256 period = startPeriod; period < currPeriod; period++) {
         uint256 periodStart = rules.startDate + (period * PERIOD_DURATION);
         uint256 deadline = periodStart + contributionWindow + gracePeriod;
-        bool missed = (block.timestamp > deadline && contributionTimestamps[user][period] == 0);
 
-        console.log("Checking period:", period);
-        console.log("  Period start:", periodStart);
-        console.log("  Deadline:", deadline);
-        console.log("  Contribution timestamp:", contributionTimestamps[user][period]);
-        console.log("  Block.timestamp:", block.timestamp);
-        console.log("  Missed?", missed);
-
-        if (missed) {
+        if (block.timestamp > deadline && contributionTimestamps[user][period] == 0) {
             members[user].missedContributions++;
             emit MissedContributionDetected(user, period, block.timestamp);
-            console.log("  >> Missed contribution detected!");
 
             if (members[user].missedContributions >= MAX_MISSED_CONTRIBUTIONS) {
-                console.log("  >> Applying punishment");
                 _applyPunishment(user, "Exceeded maximum missed contributions");
                 break;
             }
         }
     }
+
+    if (currPeriod > 0) {
+        lastCheckedPeriod[user] = currPeriod - 1;
+    }
 }
+
+
 
     /**
      * @dev Enhanced punishment system
@@ -469,7 +460,7 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
         uint256 fineAmount = 0;
         ChamaStructs.PunishmentAction action = rules.punishmentMode;
 
-        if (rules.punishmentMode == ChamaStructs.PunishmentAction.Fine) {
+        if (action == ChamaStructs.PunishmentAction.Fine) {
             fineAmount = FINE_AMOUNT;
             members[user].consecutiveFines++;
 
@@ -479,8 +470,10 @@ contract ChamaGroup is ReentrancyGuard, Pausable {
                 members[user].isActive = false;
                 activeMemberCount--;
             }
-        } else {
-            members[user].consecutiveFines = 0;
+        } else if (action == ChamaStructs.PunishmentAction.Ban) {
+            members[user].isActive = false;
+            activeMemberCount--;
+            members[user].consecutiveFines = 0; // reset
         }
 
         punishments[user] = ChamaStructs.Punishment({
