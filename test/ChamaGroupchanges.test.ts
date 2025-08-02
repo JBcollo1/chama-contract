@@ -14,6 +14,9 @@ import {
 } from "./fixtures/chamaFixtures";
 import chai from "chai";
 import chaiBigint from "chai-bigint";
+import "@nomicfoundation/hardhat-chai-matchers";
+import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
+
 
 chai.use(chaiBigint);
 
