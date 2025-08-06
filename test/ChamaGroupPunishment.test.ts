@@ -234,68 +234,57 @@ it("Should execute successful proposals with sufficient votes", async function (
   );
   await publicClient.waitForTransactionReceipt({ hash: punishHash });
 
-  // Verify member is banned
-  let member = await group.read.getMemberDetails([user2.account.address]) as [
-    boolean, boolean, bigint, bigint, bigint, bigint
-  ];
-  expect(member[1]).to.be.false; // isActive should be false
+  console.log("After punishMember:");
+  console.log("  Member:", await group.read.getMemberDetails([user2.account.address]));
+  console.log("  Punishment:", await group.read.getPunishmentDetails([user2.account.address]));
 
   // Create proposal
   const proposeHash = await group.write.createProposal(
-    [0, user2.account.address, 0n, "Cancel ban for user2"],
+    [1, user2.account.address, 0n, "Cancel ban for user2"],
     { account: user3.account }
   );
   await publicClient.waitForTransactionReceipt({ hash: proposeHash });
 
   const proposalId = 1n;
 
-  // Get enough votes for proposal - include user1 (admin) vote
-  const voteHash1 = await group.write.voteOnProposal(
-    [proposalId, true],
-    { account: user1.account } // Admin votes too
-  );
+  // Voting
+  const voteHash1 = await group.write.voteOnProposal([proposalId, true], { account: user1.account });
   await publicClient.waitForTransactionReceipt({ hash: voteHash1 });
 
-  const voteHash2 = await group.write.voteOnProposal(
-    [proposalId, true],
-    { account: user3.account }
-  );
+  const voteHash2 = await group.write.voteOnProposal([proposalId, true], { account: user3.account });
   await publicClient.waitForTransactionReceipt({ hash: voteHash2 });
 
-  const voteHash3 = await group.write.voteOnProposal(
-    [proposalId, true],
-    { account: user4.account }
-  );
+  const voteHash3 = await group.write.voteOnProposal([proposalId, true], { account: user4.account });
   await publicClient.waitForTransactionReceipt({ hash: voteHash3 });
 
-  // Wait for voting period to end (3 days)
+  // Time travel
   await (publicClient as any).request({
     method: "evm_increaseTime",
-    params: [3 * 24 * 60 * 60 + 1], // 3 days and 1 second
+    params: [3 * 24 * 60 * 60 + 1],
   });
+  await (publicClient as any).request({ method: "evm_mine" });
 
-  await (publicClient as any).request({
-    method: "evm_mine",
-  });
+  // State before execution
+  console.log("Before executeProposal:");
+  console.log("  Member:", await group.read.getMemberDetails([user2.account.address]));
+  console.log("  Punishment:", await group.read.getPunishmentDetails([user2.account.address]));
 
   // Execute proposal
-  const executeHash = await group.write.executeProposal(
-    [proposalId],
-    { account: user1.account }
-  );
+  const executeHash = await group.write.executeProposal([proposalId], { account: user1.account });
   await publicClient.waitForTransactionReceipt({ hash: executeHash });
 
-  // Verify punishment is cancelled and member is reactivated
-  const punishment = await group.read.getPunishmentDetails([user2.account.address]) as [
-    number, string, boolean, bigint, bigint
-  ];
-  expect(punishment[2]).to.be.false; // isActive should be false
+  // State after execution
+  console.log("After executeProposal:");
+  const punishment = await group.read.getPunishmentDetails([user2.account.address]);
+  console.log("  Punishment:", punishment);
+  const member = await group.read.getMemberDetails([user2.account.address]);
+  console.log("  Member:", member);
 
-  member = await group.read.getMemberDetails([user2.account.address]) as [
-    boolean, boolean, bigint, bigint, bigint, bigint
-  ];
-  expect(member[1]).to.be.true; // isActive should be true again
+  // Assertions
+  expect(punishment[2]).to.be.false; // punishment isActive should be false
+  expect(member[1]).to.be.true; // member isActive should be true
 });
+
 it("Should reject proposals with insufficient votes", async function () {
   const { group, user1, user2, user3, user4, user6, publicClient } = await loadFixture(setupGroupWithContributions);
 

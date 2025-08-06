@@ -48,7 +48,7 @@ function buildGroupConfig({
     startDate,
     endDate,
     contributionFrequency: "weekly",
-    punishmentMode: 2, // Fine
+    punishmentMode: 3, // Fine
     approvalRequired: false,
     emergencyWithdrawAllowed: true,
     creator,

@@ -426,29 +426,54 @@ function checkAndPunishMissedContributions(address user) internal {
 
     uint256 currPeriod = getCurrentPeriod();
     uint256 lastChecked = lastCheckedPeriod[user];
-
-    uint256 startPeriod = lastChecked == type(uint256).max ? 0 : lastChecked + 1;
-
+    
+    // Handle both cases: properly initialized (max) and improperly initialized (0)
+    uint256 startPeriod;
+    if (lastChecked == type(uint256).max) {
+        // Properly initialized - start from period 0
+        startPeriod = 0;
+    } else if (lastChecked == 0 && members[user].totalContributed == 0) {
+        // Member never contributed and lastChecked is 0 - likely initialization issue
+        // Start from period 0
+        startPeriod = 0;
+    } else {
+        // Normal case - start from next period after last checked
+        startPeriod = lastChecked + 1;
+    }
+    
+    console.log("Debug - currPeriod:", currPeriod);
+    console.log("Debug - lastChecked:", lastChecked);
+    console.log("Debug - startPeriod:", startPeriod);
+    
     for (uint256 period = startPeriod; period < currPeriod; period++) {
         uint256 periodStart = rules.startDate + (period * PERIOD_DURATION);
         uint256 deadline = periodStart + contributionWindow + gracePeriod;
-
+        
+        console.log("Debug - Checking period:", period);
+        console.log("Debug - Period deadline:", deadline);
+        console.log("Debug - Current timestamp:", block.timestamp);
+        console.log("Debug - Is past deadline:", block.timestamp > deadline);
+        console.log("Debug - Has contribution:", contributionTimestamps[user][period] != 0);
+        
         if (block.timestamp > deadline && contributionTimestamps[user][period] == 0) {
             members[user].missedContributions++;
+            console.log("Debug - Missed contribution detected for period:", period);
+            console.log("Debug - Total missed contributions:", members[user].missedContributions);
             emit MissedContributionDetected(user, period, block.timestamp);
-
+            
             if (members[user].missedContributions >= MAX_MISSED_CONTRIBUTIONS) {
+                console.log("Debug - Applying punishment - max missed reached");
                 _applyPunishment(user, "Exceeded maximum missed contributions");
                 break;
             }
         }
     }
-
+    
     if (currPeriod > 0) {
         lastCheckedPeriod[user] = currPeriod - 1;
+        console.log("Debug - Updated lastCheckedPeriod to:", currPeriod - 1);
     }
 }
-
 
 
     /**
