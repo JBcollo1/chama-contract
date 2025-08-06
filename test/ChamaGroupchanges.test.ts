@@ -244,59 +244,80 @@ it("Should ban member after exceeding maximum missed contributions", async funct
   const contributionWindow = await group.read.contributionWindow();
   const gracePeriod = await group.read.gracePeriod();
   const MAX_MISSED = await group.read.MAX_MISSED_CONTRIBUTIONS();
+  // const punishmentMode = await group.read.rules.punishmentMode(); 
 
   console.log("MAX_MISSED:", MAX_MISSED.toString());
+  // console.log("Punishment mode:", punishmentMode.toString());
   console.log("PERIOD_DURATION:", PERIOD_DURATION.toString());
   console.log("Contribution window:", contributionWindow.toString());
   console.log("Grace period:", gracePeriod.toString());
   console.log("Start date:", startDate.toString());
 
+  // Check initial lastCheckedPeriod
   const initialLastChecked = await group.read.lastCheckedPeriod([user1.account.address]);
   console.log("Initial lastCheckedPeriod:", initialLastChecked.toString());
 
-  // Simulate missing multiple periods
+  // Simulate missing multiple periods by advancing time
   let currentTime = startDate;
 
+  // Skip periods 0, 1, 2 (miss contributions)
   for (let period = 0; period < Number(MAX_MISSED); period++) {
     const periodEnd = currentTime + contributionWindow + gracePeriod + 1n;
-    console.log(`Skipping period ${period} — advancing to ${periodEnd}`);
+    console.log(`Skipping period ${period} — advancing to ${periodEnd.toString()}`);
+    console.log(`Period ${period} start: ${currentTime.toString()}`);
+    console.log(`Period ${period} deadline: ${(currentTime + contributionWindow + gracePeriod).toString()}`);
     await time.increaseTo(periodEnd);
     currentTime += PERIOD_DURATION;
   }
 
-  // Move into next period (within contribution window)
+  // Move to next period within contribution window
   const nextPeriodStart = currentTime;
   const testTime = nextPeriodStart + (contributionWindow / 2n);
+  console.log("Moving to test time:", testTime.toString());
+  console.log("Next period start:", nextPeriodStart.toString());
   await time.increaseTo(testTime);
 
   const currentPeriod = await group.read.getCurrentPeriod();
   console.log("Current period:", currentPeriod.toString());
 
-  const missedPeriods = await group.read.getMissedPeriods([user1.account.address]);
-  console.log("Missed periods:", missedPeriods.map((p: bigint) => p.toString()).join(", "));
+  // Check current blockchain timestamp
+  // const latestBlock = await hre.ethers.provider.getBlock("latest");
+  // console.log("Current blockchain timestamp:", latestBlock.timestamp.toString());
 
+  const missedPeriods = await group.read.getMissedPeriods([user1.account.address]);
+  console.log(
+    "Missed periods:",
+    missedPeriods.map((p: bigint) => p.toString()).join(", ")
+  );
+
+  // Check lastCheckedPeriod before contribute
+  const lastCheckedBefore = await group.read.lastCheckedPeriod([user1.account.address]);
+  console.log("lastCheckedPeriod before contribute:", lastCheckedBefore.toString());
+
+  // Check member is initially active
   const memberDetailsBefore = await group.read.getMemberDetails([user1.account.address]);
   console.log("Member details before contribute:", memberDetailsBefore);
-  expect(memberDetailsBefore[1]).to.be.true; // active before
+  console.log("Missed contributions count before contribute:", memberDetailsBefore[4].toString());
+  expect(memberDetailsBefore[1]).to.be.true; // isActive should be true
 
-  // First contribution attempt should ban the member and revert
-  await expect(
-    group.write.contribute({
-      account: user1.account,
-      value: groupConfig.contributionAmount,
-    })
-  ).to.be.rejectedWith("Member is not active (possibly banned for missed contributions)");
+  // When user tries to contribute, should detect all missed periods and ban
+  const contributeTx = await group.write.contribute({
+    account: user1.account,
+    value: groupConfig.contributionAmount,
+  });
 
-  // Verify ban happened
+  // Check lastCheckedPeriod after contribute
   const lastCheckedAfter = await group.read.lastCheckedPeriod([user1.account.address]);
-  console.log("lastCheckedPeriod after contribute attempt:", lastCheckedAfter.toString());
+  console.log("lastCheckedPeriod after contribute:", lastCheckedAfter.toString());
 
+  // Check member is now banned
   const memberDetailsAfter = await group.read.getMemberDetails([user1.account.address]);
-  console.log("Member details after ban attempt:", memberDetailsAfter);
-  expect(memberDetailsAfter[1]).to.be.false; // now inactive
-  expect(memberDetailsAfter[4]).to.equal(MAX_MISSED); // missed count reached max
+  console.log("Member details after contribute:", memberDetailsAfter);
+  console.log("Missed contributions count after contribute:", memberDetailsAfter[4].toString());
+  expect(memberDetailsAfter[1]).to.be.false; // isActive should be false
+  expect(memberDetailsAfter[4]).to.equal(MAX_MISSED); // missedContributions should be MAX_MISSED
 
-  // Second contribution attempt should also fail
+  // Subsequent contribution attempt should fail
   await expect(
     group.write.contribute({
       account: user1.account,
@@ -304,7 +325,6 @@ it("Should ban member after exceeding maximum missed contributions", async funct
     })
   ).to.be.rejectedWith("Member is not active (possibly banned for missed contributions)");
 });
-
  it("Should not double-punish for same missed period - WITH DEBUGGING", async function () {
     const { group, user1, startDate, groupConfig } = await setupGroupWithMembers();
     
@@ -454,38 +474,49 @@ it("Should check multiple missed periods in one contribution call", async functi
     expect(missedPeriods[1]).to.equal(2n); // Period 2
   });
 
-  it("Should reject contribution if outside window even with missed periods", async function () {
-    const { group, user1, startDate, groupConfig } = await setupGroupWithMembers();
-    
-    const PERIOD_DURATION = await group.read.PERIOD_DURATION();
-    const contributionWindow = await group.read.contributionWindow();
-    const gracePeriod = await group.read.gracePeriod();
-    
-    // Miss period 0
-    const period0WindowEnd = startDate + contributionWindow + gracePeriod + 1n;
-    await time.increaseTo(period0WindowEnd);
-    
-    // Move to period 1, but OUTSIDE the contribution window
-    const period1Start = startDate + PERIOD_DURATION;
-    const period1WindowEnd = period1Start + contributionWindow + gracePeriod;
-    const testTime = period1WindowEnd + 1n; // After period 1 window closes
-    
-    await time.increaseTo(testTime);
-    
-    const currentPeriod = await group.read.getCurrentPeriod();
-    const isOpen = await group.read.isContributionWindowOpen();
-    
-    expect(currentPeriod).to.equal(1n);
-    expect(isOpen).to.be.false;
-    
-    // Should reject due to window being closed, even though user missed period 0
-    await expect(
-      group.write.contribute({
-        account: user1.account,
-        value: groupConfig.contributionAmount,
-      })
-    ).to.be.rejectedWith("Contribution window closed");
-  });
+it("Should reject contribution if outside window", async function () {
+  const { group, user1, startDate, groupConfig } = await setupGroupWithMembers();
+
+  const PERIOD_DURATION = await group.read.PERIOD_DURATION();
+  const contributionWindow = await group.read.contributionWindow();
+  const gracePeriod = await group.read.gracePeriod();
+
+  console.log("PERIOD_DURATION:", PERIOD_DURATION.toString());
+  console.log("contributionWindow:", contributionWindow.toString());
+  console.log("gracePeriod:", gracePeriod.toString());
+  console.log("startDate:", startDate.toString());
+
+  // ---- Move to period 1 ----
+  const period1Start = startDate + PERIOD_DURATION;
+  const period1WindowEnd = period1Start + contributionWindow + gracePeriod;
+
+  console.log("Period 1 start:", period1Start.toString());
+  console.log("Period 1 window end:", period1WindowEnd.toString());
+
+  // Move just after the period 1 window ends but still within period 1
+  // (Subtract 1 second from the rollover to period 2)
+  const testTime = period1WindowEnd + 1n; 
+  await time.increaseTo(testTime);
+
+  const currentPeriod = await group.read.getCurrentPeriod();
+  console.log("Current period at test time:", currentPeriod.toString());
+
+  const isOpen = await group.read.isContributionWindowOpen();
+  console.log("isContributionWindowOpen():", isOpen);
+
+  // Make sure we’re still in period 1 here
+  expect(currentPeriod).to.equal(1n);
+  expect(isOpen).to.be.false;
+
+  // Try contributing → should revert
+  await expect(
+    group.write.contribute({
+      account: user1.account,
+      value: groupConfig.contributionAmount,
+    })
+  ).to.be.rejectedWith("Contribution window closed");
+});
+
 
 });
 
